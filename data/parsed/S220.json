@@ -1,0 +1,831 @@
+{
+  "sku": "S220",
+  "internal_product_id": 3709,
+  "family": "Set",
+  "family_verified": true,
+  "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+  "marketing_title_raw": "14k Solid Rose and White Gold Genuine Russian style Diamond Earrings Ring",
+  "short_name": "Russian style Diamond Ring & Earring in 14k Gold",
+  "long_description_raw": "Imperial and elegant. This solid 14k gold ring and earrings are created in a Victorian inspired, old Russian design. Sparkling 27 diamonds totaling 2.28ct. are set in white gold and a rose gold ring and earrings. Sturdy french leverback locks provide a secure fit. Traditionally presented to your bride to be, today this ring can be worn for any occasion.\nThis is a brand new item and is manufactured on our premises.\n You are buying this item from the NYC Diamond District.\nSizes available: 4 to 9.1/2 in full, half & quarter sizes. \n Item will be shipped within 3-5 business days after payment is cleared.\nAvailable in any Stone you Like Please ask for the Price,\nA Company Appraisal Is Included With Your Purchase.\nAGI Appraisal Available: Value $5,000.00 + $75\n Retail Replacement and Appraisal Value $5,000.00 \nOrder By Phone: 24 hours a day, 7 days a week. \n 1.800.548. 0411. or 1 917.488.1146 \n100% Satisfaction Guaranteed.\nOur Warranty: A full year on workmanship!\nНаши телефоны: 1 800 548 0411 - 1-917 488 1146 Приём заказов круглосуточно\nпо телефону или через Интернет.",
+  "specs": [
+    {
+      "label": "Metal",
+      "value": "14k Solid Rose & White Gold",
+      "provenance_key": "specs[Metal]"
+    },
+    {
+      "label": "Weight",
+      "value": "11.40 gr.",
+      "provenance_key": "specs[Weight]"
+    },
+    {
+      "label": "Size",
+      "value": "Top to Bottom 19mm Width 11.85mm",
+      "provenance_key": "specs[Size]"
+    },
+    {
+      "label": "Gemstone(s)",
+      "value": "Center Diamond 3pcs of 0.60ct (0.20ct each) Side Diamond 24pcs of 1.68ct Total Diamond weight of both earrings and ring 2.28 ct.t.w.",
+      "provenance_key": "specs[Gemstone(s)]"
+    },
+    {
+      "label": "Shape/Cut",
+      "value": "Round Brilliant Cut",
+      "provenance_key": "specs[Shape/Cut]"
+    },
+    {
+      "label": "Color/Clarity",
+      "value": "Color: G/H Clarity: I1-I2 (100% eye clean)",
+      "provenance_key": "specs[Color/Clarity]"
+    }
+  ],
+  "attributes": {
+    "metal_type": "Gold",
+    "metal_purity": "14k",
+    "metal_color": "Two-Tone (White & Rose)",
+    "gross_weight_g": "11.40",
+    "measurements": {
+      "raw": "Top to Bottom 19mm Width 11.85mm"
+    },
+    "gemstones": [
+      {
+        "type": "Diamond",
+        "genuine": null,
+        "origin": null,
+        "treatment": null,
+        "carat_weight": "0.60",
+        "count": null,
+        "shape_cut": "Round",
+        "color": null,
+        "clarity": null,
+        "provenance_key": "specs[Gemstone(s)]"
+      }
+    ]
+  },
+  "pricing": {
+    "list_price": {
+      "amount": "4295.00",
+      "currency": "USD"
+    },
+    "our_price": {
+      "amount": "3995.00",
+      "currency": "USD"
+    },
+    "you_save": {
+      "amount": "300.00",
+      "currency": "USD"
+    },
+    "you_save_percent": "7"
+  },
+  "in_stock": true,
+  "free_shipping": true,
+  "size_options": [
+    {
+      "axis": "ring_size",
+      "label": "size 3.75",
+      "value": "3.75",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "152",
+      "child_sku": "S220-152",
+      "provenance_key": "size_options[152]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 4",
+      "value": "4",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "99",
+      "child_sku": "S220-99",
+      "provenance_key": "size_options[99]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 4.25",
+      "value": "4.25",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "131",
+      "child_sku": "S220-131",
+      "provenance_key": "size_options[131]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 4.5",
+      "value": "4.5",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "54",
+      "child_sku": "S220-54",
+      "provenance_key": "size_options[54]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 4.75",
+      "value": "4.75",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "134",
+      "child_sku": "S220-134",
+      "provenance_key": "size_options[134]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 5",
+      "value": "5",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "103",
+      "child_sku": "S220-103",
+      "provenance_key": "size_options[103]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 5.25",
+      "value": "5.25",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "136",
+      "child_sku": "S220-136",
+      "provenance_key": "size_options[136]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 5.5",
+      "value": "5.5",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "104",
+      "child_sku": "S220-104",
+      "provenance_key": "size_options[104]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 5.75",
+      "value": "5.75",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "135",
+      "child_sku": "S220-135",
+      "provenance_key": "size_options[135]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 6",
+      "value": "6",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "44",
+      "child_sku": "S220-44",
+      "provenance_key": "size_options[44]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 6.25",
+      "value": "6.25",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "137",
+      "child_sku": "S220-137",
+      "provenance_key": "size_options[137]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 6.5",
+      "value": "6.5",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "106",
+      "child_sku": "S220-106",
+      "provenance_key": "size_options[106]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 6.75",
+      "value": "6.75",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "133",
+      "child_sku": "S220-133",
+      "provenance_key": "size_options[133]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 7",
+      "value": "7",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "59",
+      "child_sku": "S220-59",
+      "provenance_key": "size_options[59]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 7.25",
+      "value": "7.25",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "132",
+      "child_sku": "S220-132",
+      "provenance_key": "size_options[132]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 7.5",
+      "value": "7.5",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "30",
+      "child_sku": "S220-30",
+      "provenance_key": "size_options[30]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 7.75",
+      "value": "7.75",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "138",
+      "child_sku": "S220-138",
+      "provenance_key": "size_options[138]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 8",
+      "value": "8",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "61",
+      "child_sku": "S220-61",
+      "provenance_key": "size_options[61]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 8.25",
+      "value": "8.25",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "139",
+      "child_sku": "S220-139",
+      "provenance_key": "size_options[139]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 8.5",
+      "value": "8.5",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "62",
+      "child_sku": "S220-62",
+      "provenance_key": "size_options[62]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 8.75",
+      "value": "8.75",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "140",
+      "child_sku": "S220-140",
+      "provenance_key": "size_options[140]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 9",
+      "value": "9",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "63",
+      "child_sku": "S220-63",
+      "provenance_key": "size_options[63]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 9.25",
+      "value": "9.25",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "141",
+      "child_sku": "S220-141",
+      "provenance_key": "size_options[141]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Size 9.5",
+      "value": "9.5",
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "64",
+      "child_sku": "S220-64",
+      "provenance_key": "size_options[64]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Not Sure",
+      "value": null,
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "150",
+      "child_sku": "S220-150",
+      "provenance_key": "size_options[150]"
+    },
+    {
+      "axis": "ring_size",
+      "label": "Custom size",
+      "value": null,
+      "unit": null,
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "34",
+      "child_sku": "S220-34",
+      "provenance_key": "size_options[34]"
+    }
+  ],
+  "appraisal_options": [
+    {
+      "name": "Free Company Appraisal",
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "129",
+      "provenance_key": "appraisal_options[129]"
+    },
+    {
+      "name": "AGI Certificate",
+      "price_delta": {
+        "amount": "75.00",
+        "currency": "USD"
+      },
+      "option_value_id": "128",
+      "provenance_key": "appraisal_options[128]"
+    },
+    {
+      "name": "AAA Appraisal",
+      "price_delta": {
+        "amount": "50.00",
+        "currency": "USD"
+      },
+      "option_value_id": "296",
+      "provenance_key": "appraisal_options[296]"
+    }
+  ],
+  "media": [
+    {
+      "role": "main",
+      "kind": "image",
+      "source_url": "https://www.anzorjewelrycorp.com/jewelry/s220a.jpg",
+      "local_path": null,
+      "content_hash": null,
+      "width": null,
+      "height": null,
+      "probed_ok": null,
+      "provenance_key": "media[main]"
+    },
+    {
+      "role": "alternate",
+      "kind": "image",
+      "source_url": "https://www.anzorjewelrycorp.com/jewelry/s220b.jpg",
+      "local_path": null,
+      "content_hash": null,
+      "width": null,
+      "height": null,
+      "probed_ok": null,
+      "provenance_key": "media[alt:1]"
+    },
+    {
+      "role": "alternate",
+      "kind": "image",
+      "source_url": "https://www.anzorjewelrycorp.com/jewelry/s220c.jpg",
+      "local_path": null,
+      "content_hash": null,
+      "width": null,
+      "height": null,
+      "probed_ok": null,
+      "provenance_key": "media[alt:2]"
+    },
+    {
+      "role": "alternate",
+      "kind": "image",
+      "source_url": "https://www.anzorjewelrycorp.com/jewelry/s220d.jpg",
+      "local_path": null,
+      "content_hash": null,
+      "width": null,
+      "height": null,
+      "probed_ok": null,
+      "provenance_key": "media[alt:3]"
+    }
+  ],
+  "breadcrumbs": [
+    [
+      "All",
+      "Sets"
+    ],
+    [
+      "All",
+      "Diamond Jewelry",
+      "Diamond Earrings"
+    ],
+    [
+      "All",
+      "Diamond Jewelry",
+      "Diamond Rings"
+    ],
+    [
+      "All",
+      "Diamond Jewelry",
+      "All Diamonds",
+      "Email a Friend",
+      "Product Inquiry"
+    ]
+  ],
+  "provenance": {
+    "breadcrumbs": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "Related Products block",
+      "raw_snippet": "[['All', 'Sets'], ['All', 'Diamond Jewelry', 'Diamond Earrings'], ['All', 'Diamond Jewelry', 'Diamond Rings'], ['All', 'Diamond Jewelry', 'All Diamonds', 'Email a Friend', 'Product Inquiry']]",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "family": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "SKU prefix + breadcrumb",
+      "raw_snippet": "S->Set",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "specs[Metal]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Metal: 14k Solid Rose & White Gold",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "specs[Weight]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Weight: 11.40 gr.",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "specs[Size]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Size: Top to Bottom 19mm Width 11.85mm",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "specs[Gemstone(s)]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Gemstone(s): Center Diamond 3pcs of 0.60ct (0.20ct each) Side Diamond 24pcs of 1.68ct Total Diamond weight of both earrings and ring 2.28 ct.t.w.",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "specs[Shape/Cut]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Shape/Cut: Round Brilliant Cut",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "specs[Color/Clarity]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Color/Clarity: Color: G/H Clarity: I1-I2 (100% eye clean)",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "marketing_title_raw": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "itemprop=\"name\"",
+      "raw_snippet": "14k Solid Rose and White Gold Genuine Russian style Diamond Earrings Ring",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[152]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "size 3.75",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[99]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 4",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[131]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 4.25",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[54]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 4.5",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[134]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 4.75",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[103]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 5",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[136]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 5.25",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[104]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 5.5",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[135]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 5.75",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[44]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 6",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[137]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 6.25",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[106]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 6.5",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[133]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 6.75",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[59]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 7",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[132]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 7.25",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[30]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 7.5",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[138]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 7.75",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[61]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 8",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[139]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 8.25",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[62]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 8.5",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[140]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 8.75",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[63]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 9",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[141]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 9.25",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[64]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Size 9.5",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[150]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Not Sure",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "size_options[34]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption7 (Choose Ring Size NO: 5)",
+      "raw_snippet": "Custom size",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "appraisal_options[129]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption18 (Appraisal)",
+      "raw_snippet": "Free Company Appraisal",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "appraisal_options[128]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption18 (Appraisal)",
+      "raw_snippet": "AGI Certificate + $75.00",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "appraisal_options[296]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "OPTidOption18 (Appraisal)",
+      "raw_snippet": "AAA Appraisal $50.00",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "in_stock": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "b.CPinStock",
+      "raw_snippet": "Item in stock!",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "free_shipping": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "b.CPfreeShipMsg",
+      "raw_snippet": "Free shipping for this item!",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "sku": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "itemprop=\"sku\"",
+      "raw_snippet": "S220",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "internal_product_id": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "emailToFriend idProduct",
+      "raw_snippet": "idProduct=3709",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "short_name": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "img.mainProductImage[alt]",
+      "raw_snippet": "Russian style Diamond Ring & Earring in 14k Gold",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "long_description_raw": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "itemprop=\"description\"",
+      "raw_snippet": "Imperial and elegant. This solid 14k gold ring and earrings are created in a Victorian inspired, old Russian design. Sparkling 27 diamonds totaling 2.28ct. are set in white gold and a rose gold ring a",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "pricing.list_price": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "del.CPprodLPriceV",
+      "raw_snippet": "$4,295.00",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "pricing.our_price": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "b.CPprodPriceV",
+      "raw_snippet": "$3,995.00",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "pricing.you_save": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "span.CPprodSPriceV",
+      "raw_snippet": "$300.00 (7%)",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "media[main]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "img.mainProductImage",
+      "raw_snippet": "https://www.anzorjewelrycorp.com/jewelry/s220a.jpg",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "media[alt:1]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "Alternate Views thumbnail",
+      "raw_snippet": "https://www.anzorjewelrycorp.com/jewelry/s220b.jpg",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "media[alt:2]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "Alternate Views thumbnail",
+      "raw_snippet": "https://www.anzorjewelrycorp.com/jewelry/s220c.jpg",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    },
+    "media[alt:3]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=S220",
+      "anchor": "Alternate Views thumbnail",
+      "raw_snippet": "https://www.anzorjewelrycorp.com/jewelry/s220d.jpg",
+      "extracted_at": "2026-08-14T20:35:43.576350Z"
+    }
+  },
+  "warnings": [],
+  "content_hash": "4f25937e74f49ca0553b2bbee56c65e0ddeb0850661db2deba4ffdb3bb03e333",
+  "fetched_at": "2026-08-14T20:35:43.576350Z"
+}

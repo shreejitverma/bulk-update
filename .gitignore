@@ -1,0 +1,23 @@
+# Secrets
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Runtime data (raw HTML/image cache, SQLite state) — never commit
+data/raw/
+data/media/
+*.sqlite
+*.sqlite3
+
+# Keep committed fixtures under tests/fixtures/

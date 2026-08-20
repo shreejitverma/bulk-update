@@ -1,0 +1,333 @@
+{
+  "sku": "E1154",
+  "internal_product_id": 3573,
+  "family": "Earrings",
+  "family_verified": true,
+  "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+  "marketing_title_raw": "Russian style Emerald & Diamond Earrings 14k Solid Two-Tone Gold (Rose-White)",
+  "short_name": "Russian style Emerald & Diamond Earrings 14K",
+  "long_description_raw": "Imperial and elegant. These solid 14k Rose and White gold earrings are created in a Victorian inspired, old Russian style design. 18 beautiful diamonds totaling 1.04cts. encircle stunning rich green emerald measuring 1.30ct. Sturdy french leverback locks provide a secure fit.\nIf you like how this Russian Jewelry looks in the picture then you will be blown away when you try it on for the first time. \nThis is a brand new item and is manufactured on our premises in New York City Diamond District.\n Item will be shipped within 4-5 business days after payment is cleared.\nAvailable in any Stone you Like Please ask for the Price,\nA Company Appraisal Is Included With Your Purchase.\nAGI Appraisal Available: Value $3,100.00 + $75\n Retail Replacement and Appraisal Value $3,100.00 \nНаши телефоны: 1.800.548. 0411. - 1 917.488.1146 Приём заказов круглосуточно\nпо телефону или через Интернет.\nДоставка товара в любой уголок России, где есть почта. Срок доставки зависит от удалённости региона.\n100% Satisfaction Guaranteed.\nOur Warranty: A full year on workmanship!",
+  "specs": [
+    {
+      "label": "Metal",
+      "value": "14k Solid Rose & White Gold",
+      "provenance_key": "specs[Metal]"
+    },
+    {
+      "label": "Weight",
+      "value": "8.10 gr.",
+      "provenance_key": "specs[Weight]"
+    },
+    {
+      "label": "Size",
+      "value": "Top to Bottom 22 mm Side Width 15.50 mm Genuine Emerald 5mm",
+      "provenance_key": "specs[Size]"
+    },
+    {
+      "label": "Gemstone(s)",
+      "value": "1.04CWT ( Total Diamond weight) Diamond Quantity 16 Pieces. 1.30ct Emerald of 2pcs (0.65ct Emerald each)",
+      "provenance_key": "specs[Gemstone(s)]"
+    },
+    {
+      "label": "Shape/Cut",
+      "value": "Round briliant Cut",
+      "provenance_key": "specs[Shape/Cut]"
+    },
+    {
+      "label": "Color/Clarity",
+      "value": "Color: G Clarity: VS2 (100% eye clean)",
+      "provenance_key": "specs[Color/Clarity]"
+    }
+  ],
+  "attributes": {
+    "metal_type": "Gold",
+    "metal_purity": "14k",
+    "metal_color": "Two-Tone (White & Rose)",
+    "gross_weight_g": "8.10",
+    "measurements": {
+      "raw": "Top to Bottom 22 mm Side Width 15.50 mm Genuine Emerald 5mm"
+    },
+    "gemstones": [
+      {
+        "type": "Diamond",
+        "genuine": null,
+        "origin": null,
+        "treatment": null,
+        "carat_weight": "1.04",
+        "count": null,
+        "shape_cut": "Round",
+        "color": null,
+        "clarity": null,
+        "provenance_key": "specs[Gemstone(s)]"
+      },
+      {
+        "type": "Emerald",
+        "genuine": null,
+        "origin": null,
+        "treatment": null,
+        "carat_weight": "1.04",
+        "count": null,
+        "shape_cut": "Round",
+        "color": null,
+        "clarity": null,
+        "provenance_key": "specs[Gemstone(s)]"
+      }
+    ]
+  },
+  "pricing": {
+    "list_price": {
+      "amount": "2599.00",
+      "currency": "USD"
+    },
+    "our_price": {
+      "amount": "2399.00",
+      "currency": "USD"
+    },
+    "you_save": {
+      "amount": "200.00",
+      "currency": "USD"
+    },
+    "you_save_percent": "8"
+  },
+  "in_stock": true,
+  "free_shipping": true,
+  "size_options": [],
+  "appraisal_options": [
+    {
+      "name": "Free Company Appraisal",
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "129",
+      "provenance_key": "appraisal_options[129]"
+    },
+    {
+      "name": "AGI Certificate",
+      "price_delta": {
+        "amount": "75.00",
+        "currency": "USD"
+      },
+      "option_value_id": "128",
+      "provenance_key": "appraisal_options[128]"
+    }
+  ],
+  "media": [
+    {
+      "role": "main",
+      "kind": "image",
+      "source_url": "https://www.anzorjewelrycorp.com/jewelry/e1154a.jpg",
+      "local_path": null,
+      "content_hash": null,
+      "width": null,
+      "height": null,
+      "probed_ok": null,
+      "provenance_key": "media[main]"
+    },
+    {
+      "role": "alternate",
+      "kind": "image",
+      "source_url": "https://www.anzorjewelrycorp.com/jewelry/e1154b.jpg",
+      "local_path": null,
+      "content_hash": null,
+      "width": null,
+      "height": null,
+      "probed_ok": null,
+      "provenance_key": "media[alt:1]"
+    },
+    {
+      "role": "alternate",
+      "kind": "image",
+      "source_url": "https://www.anzorjewelrycorp.com/jewelry/e1154c.jpg",
+      "local_path": null,
+      "content_hash": null,
+      "width": null,
+      "height": null,
+      "probed_ok": null,
+      "provenance_key": "media[alt:2]"
+    },
+    {
+      "role": "alternate",
+      "kind": "image",
+      "source_url": "https://www.anzorjewelrycorp.com/jewelry/e1154d.jpg",
+      "local_path": null,
+      "content_hash": null,
+      "width": null,
+      "height": null,
+      "probed_ok": null,
+      "provenance_key": "media[alt:3]"
+    }
+  ],
+  "breadcrumbs": [
+    [
+      "All",
+      "Earrings"
+    ],
+    [
+      "All",
+      "Diamond Jewelry",
+      "All Diamonds"
+    ],
+    [
+      "All",
+      "Diamond Jewelry",
+      "Diamond Earrings"
+    ],
+    [
+      "All",
+      "Emerald Jewelry",
+      "Emerald Earrings",
+      "Email a Friend",
+      "Product Inquiry"
+    ]
+  ],
+  "provenance": {
+    "breadcrumbs": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "Related Products block",
+      "raw_snippet": "[['All', 'Earrings'], ['All', 'Diamond Jewelry', 'All Diamonds'], ['All', 'Diamond Jewelry', 'Diamond Earrings'], ['All', 'Emerald Jewelry', 'Emerald Earrings', 'Email a Friend', 'Product Inquiry']]",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "family": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "SKU prefix + breadcrumb",
+      "raw_snippet": "E->Earrings",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "specs[Metal]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Metal: 14k Solid Rose & White Gold",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "specs[Weight]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Weight: 8.10 gr.",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "specs[Size]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Size: Top to Bottom 22 mm Side Width 15.50 mm Genuine Emerald 5mm",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "specs[Gemstone(s)]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Gemstone(s): 1.04CWT ( Total Diamond weight) Diamond Quantity 16 Pieces. 1.30ct Emerald of 2pcs (0.65ct Emerald each)",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "specs[Shape/Cut]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Shape/Cut: Round briliant Cut",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "specs[Color/Clarity]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Color/Clarity: Color: G Clarity: VS2 (100% eye clean)",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "marketing_title_raw": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "itemprop=\"name\"",
+      "raw_snippet": "Russian style Emerald & Diamond Earrings 14k Solid Two-Tone Gold (Rose-White)",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "appraisal_options[129]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "OPTidOption18 (Appraisal)",
+      "raw_snippet": "Free Company Appraisal",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "appraisal_options[128]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "OPTidOption18 (Appraisal)",
+      "raw_snippet": "AGI Certificate + $75.00",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "in_stock": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "b.CPinStock",
+      "raw_snippet": "Item in stock!",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "free_shipping": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "b.CPfreeShipMsg",
+      "raw_snippet": "Free shipping for this item!",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "sku": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "itemprop=\"sku\"",
+      "raw_snippet": "E1154",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "internal_product_id": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "emailToFriend idProduct",
+      "raw_snippet": "idProduct=3573",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "short_name": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "img.mainProductImage[alt]",
+      "raw_snippet": "Russian style Emerald & Diamond Earrings 14K",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "long_description_raw": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "itemprop=\"description\"",
+      "raw_snippet": "Imperial and elegant. These solid 14k Rose and White gold earrings are created in a Victorian inspired, old Russian style design. 18 beautiful diamonds totaling 1.04cts. encircle stunning rich green e",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "pricing.list_price": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "del.CPprodLPriceV",
+      "raw_snippet": "$2,599.00",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "pricing.our_price": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "b.CPprodPriceV",
+      "raw_snippet": "$2,399.00",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "pricing.you_save": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "span.CPprodSPriceV",
+      "raw_snippet": "$200.00 (8%)",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "media[main]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "img.mainProductImage",
+      "raw_snippet": "https://www.anzorjewelrycorp.com/jewelry/e1154a.jpg",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "media[alt:1]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "Alternate Views thumbnail",
+      "raw_snippet": "https://www.anzorjewelrycorp.com/jewelry/e1154b.jpg",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "media[alt:2]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "Alternate Views thumbnail",
+      "raw_snippet": "https://www.anzorjewelrycorp.com/jewelry/e1154c.jpg",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    },
+    "media[alt:3]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E1154",
+      "anchor": "Alternate Views thumbnail",
+      "raw_snippet": "https://www.anzorjewelrycorp.com/jewelry/e1154d.jpg",
+      "extracted_at": "2026-08-14T20:35:43.567877Z"
+    }
+  },
+  "warnings": [],
+  "content_hash": "a326bb9aeae86a5aeb7ed559501750f1af99cfc49134009eb4208303e5de778a",
+  "fetched_at": "2026-08-14T20:35:43.567877Z"
+}

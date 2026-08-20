@@ -1,0 +1,343 @@
+{
+  "sku": "E711",
+  "internal_product_id": 1903,
+  "family": "Earrings",
+  "family_verified": true,
+  "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+  "marketing_title_raw": "Russian Style 1.20 cwt Emerald and .70 cwt Diamond Earrings 14k Gold",
+  "short_name": "Russian Style Emerald Diamond Earrings 585",
+  "long_description_raw": "Imperial and elegant. These solid 14k gold earrings are created in a Victorian inspired, old Russian design. Stunning diamonds totaling 0.70ct. are set in white gold to rich green round cut natural emeralds. Sturdy french leverback locks in rose gold provide a secure fit.\nThis item will be shipped within 3-4 business days after payment is received.\nA company Appraisal Is Included With Your Purchase \nRetail Replacement Value $2,800.00\nAGI Appraisal Available: \n$2,800.00 \nНаши телефоны: 1.800.548. 0411. - 1 917.488.1146 Приём заказов круглосуточно\nпо телефону или через Интернет.\nДоставка товара в любой уголок России, где есть почта. Срок доставки зависит от удалённости региона.\n100% Satisfaction Guaranteed.\nOur Warranty: A full year on workmanship!",
+  "specs": [
+    {
+      "label": "Metal",
+      "value": "14k Rose & White Gold",
+      "provenance_key": "specs[Metal]"
+    },
+    {
+      "label": "Weight",
+      "value": "5.80 gr.",
+      "provenance_key": "specs[Weight]"
+    },
+    {
+      "label": "Size",
+      "value": ".39 inches wide (10mm) .87 inches long (22mm)",
+      "provenance_key": "specs[Size]"
+    },
+    {
+      "label": "Gemstone(s)",
+      "value": "1.20 cwt. 2 Emeralds Total Diamond weight .70 CWT Diamond Quantity 16 Pieces.",
+      "provenance_key": "specs[Gemstone(s)]"
+    },
+    {
+      "label": "Shape/Cut",
+      "value": "Round Brilliant Cut",
+      "provenance_key": "specs[Shape/Cut]"
+    },
+    {
+      "label": "Color/Clarity",
+      "value": "G / VS2 (100% eye clean)",
+      "provenance_key": "specs[Color/Clarity]"
+    }
+  ],
+  "attributes": {
+    "metal_type": "Gold",
+    "metal_purity": "14k",
+    "metal_color": "Two-Tone (White & Rose)",
+    "gross_weight_g": "5.80",
+    "measurements": {
+      "raw": ".39 inches wide (10mm) .87 inches long (22mm)"
+    },
+    "gemstones": [
+      {
+        "type": "Diamond",
+        "genuine": null,
+        "origin": null,
+        "treatment": null,
+        "carat_weight": "70",
+        "count": null,
+        "shape_cut": "Round",
+        "color": null,
+        "clarity": null,
+        "provenance_key": "specs[Gemstone(s)]"
+      },
+      {
+        "type": "Emerald",
+        "genuine": null,
+        "origin": null,
+        "treatment": null,
+        "carat_weight": "1.20",
+        "count": null,
+        "shape_cut": "Round",
+        "color": null,
+        "clarity": null,
+        "provenance_key": "specs[Gemstone(s)]"
+      }
+    ]
+  },
+  "pricing": {
+    "list_price": {
+      "amount": "2495.00",
+      "currency": "USD"
+    },
+    "our_price": {
+      "amount": "2295.00",
+      "currency": "USD"
+    },
+    "you_save": {
+      "amount": "200.00",
+      "currency": "USD"
+    },
+    "you_save_percent": "8"
+  },
+  "in_stock": true,
+  "free_shipping": true,
+  "size_options": [],
+  "appraisal_options": [
+    {
+      "name": "Free Company Appraisal",
+      "price_delta": {
+        "amount": "0.00",
+        "currency": "USD"
+      },
+      "option_value_id": "129",
+      "provenance_key": "appraisal_options[129]"
+    },
+    {
+      "name": "AGI Certificate",
+      "price_delta": {
+        "amount": "75.00",
+        "currency": "USD"
+      },
+      "option_value_id": "128",
+      "provenance_key": "appraisal_options[128]"
+    },
+    {
+      "name": "AAA Appraisal",
+      "price_delta": {
+        "amount": "50.00",
+        "currency": "USD"
+      },
+      "option_value_id": "296",
+      "provenance_key": "appraisal_options[296]"
+    }
+  ],
+  "media": [
+    {
+      "role": "main",
+      "kind": "image",
+      "source_url": "https://www.anzorjewelrycorp.com/jewelry/DSCN1310.jpg",
+      "local_path": null,
+      "content_hash": null,
+      "width": null,
+      "height": null,
+      "probed_ok": null,
+      "provenance_key": "media[main]"
+    },
+    {
+      "role": "alternate",
+      "kind": "image",
+      "source_url": "https://www.anzorjewelrycorp.com/jewelry/DSCN1307.jpg",
+      "local_path": null,
+      "content_hash": null,
+      "width": null,
+      "height": null,
+      "probed_ok": null,
+      "provenance_key": "media[alt:1]"
+    },
+    {
+      "role": "alternate",
+      "kind": "image",
+      "source_url": "https://www.anzorjewelrycorp.com/jewelry/DSCN1313.jpg",
+      "local_path": null,
+      "content_hash": null,
+      "width": null,
+      "height": null,
+      "probed_ok": null,
+      "provenance_key": "media[alt:2]"
+    },
+    {
+      "role": "alternate",
+      "kind": "image",
+      "source_url": "https://www.anzorjewelrycorp.com/jewelry/e711e.jpg",
+      "local_path": null,
+      "content_hash": null,
+      "width": null,
+      "height": null,
+      "probed_ok": null,
+      "provenance_key": "media[alt:3]"
+    }
+  ],
+  "breadcrumbs": [
+    [
+      "All",
+      "Diamond Jewelry",
+      "Diamond Earrings"
+    ],
+    [
+      "All",
+      "Earrings"
+    ],
+    [
+      "All",
+      "Emerald Jewelry",
+      "Emerald Earrings",
+      "Email a Friend",
+      "Product Inquiry"
+    ]
+  ],
+  "provenance": {
+    "breadcrumbs": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "Related Products block",
+      "raw_snippet": "[['All', 'Diamond Jewelry', 'Diamond Earrings'], ['All', 'Earrings'], ['All', 'Emerald Jewelry', 'Emerald Earrings', 'Email a Friend', 'Product Inquiry']]",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "family": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "SKU prefix + breadcrumb",
+      "raw_snippet": "E->Earrings",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "specs[Metal]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Metal: 14k Rose & White Gold",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "specs[Weight]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Weight: 5.80 gr.",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "specs[Size]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Size: .39 inches wide (10mm) .87 inches long (22mm)",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "specs[Gemstone(s)]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Gemstone(s): 1.20 cwt. 2 Emeralds Total Diamond weight .70 CWT Diamond Quantity 16 Pieces.",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "specs[Shape/Cut]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Shape/Cut: Round Brilliant Cut",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "specs[Color/Clarity]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "itemprop=\"additionalProperty\"",
+      "raw_snippet": "Color/Clarity: G / VS2 (100% eye clean)",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "marketing_title_raw": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "itemprop=\"name\"",
+      "raw_snippet": "Russian Style 1.20 cwt Emerald and .70 cwt Diamond Earrings 14k Gold",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "appraisal_options[129]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "OPTidOption18 (Appraisal)",
+      "raw_snippet": "Free Company Appraisal",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "appraisal_options[128]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "OPTidOption18 (Appraisal)",
+      "raw_snippet": "AGI Certificate + $75.00",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "appraisal_options[296]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "OPTidOption18 (Appraisal)",
+      "raw_snippet": "AAA Appraisal $50.00",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "in_stock": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "b.CPinStock",
+      "raw_snippet": "Item in stock!",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "free_shipping": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "b.CPfreeShipMsg",
+      "raw_snippet": "Free shipping for this item!",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "sku": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "itemprop=\"sku\"",
+      "raw_snippet": "E711",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "internal_product_id": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "emailToFriend idProduct",
+      "raw_snippet": "idProduct=1903",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "short_name": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "img.mainProductImage[alt]",
+      "raw_snippet": "Russian Style Emerald Diamond Earrings 585",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "long_description_raw": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "itemprop=\"description\"",
+      "raw_snippet": "Imperial and elegant. These solid 14k gold earrings are created in a Victorian inspired, old Russian design. Stunning diamonds totaling 0.70ct. are set in white gold to rich green round cut natural em",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "pricing.list_price": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "del.CPprodLPriceV",
+      "raw_snippet": "$2,495.00",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "pricing.our_price": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "b.CPprodPriceV",
+      "raw_snippet": "$2,295.00",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "pricing.you_save": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "span.CPprodSPriceV",
+      "raw_snippet": "$200.00 (8%)",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "media[main]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "img.mainProductImage",
+      "raw_snippet": "https://www.anzorjewelrycorp.com/jewelry/DSCN1310.jpg",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "media[alt:1]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "Alternate Views thumbnail",
+      "raw_snippet": "https://www.anzorjewelrycorp.com/jewelry/DSCN1307.jpg",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "media[alt:2]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "Alternate Views thumbnail",
+      "raw_snippet": "https://www.anzorjewelrycorp.com/jewelry/DSCN1313.jpg",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    },
+    "media[alt:3]": {
+      "source_url": "https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=E711",
+      "anchor": "Alternate Views thumbnail",
+      "raw_snippet": "https://www.anzorjewelrycorp.com/jewelry/e711e.jpg",
+      "extracted_at": "2026-08-14T20:35:43.584244Z"
+    }
+  },
+  "warnings": [],
+  "content_hash": "3d0c84d11b10d663ef797f7815d04eae0daf2db0c4c9748b5e400740a8b26549",
+  "fetched_at": "2026-08-14T20:35:43.584244Z"
+}
