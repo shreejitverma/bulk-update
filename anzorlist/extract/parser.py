@@ -343,24 +343,28 @@ class ProductParser:
         gem_positions = [i for i, (kind, _) in enumerate(tokens) if kind == "gem"]
         if not gem_positions:
             return {}
+        gem_names = {tokens[i][1] for i in gem_positions}
 
         def read(orientation: int) -> dict[str, Decimal] | None:
             """Bind each gem to the carat token at ``orientation`` (-1 before, +1 after).
 
-            Returns ``None`` unless *every* gem in the text is satisfied — a partial match
-            means the row does not follow this layout consistently, and a consistent layout
-            is the only thing that makes the binding safe.
+            The unit of accounting is the distinct *gem type*, not the token: a row may name
+            the same stone several times ("0.28 CWT (Total Diamond weight) Diamond Quantity 10")
+            and only one of those mentions carries the weight. An orientation is accepted only
+            when every distinct gem type ends up with exactly one weight — a type left unbound,
+            or bound to two different figures, means the row does not follow this layout and
+            the binding would be a guess.
             """
-            out: dict[str, Decimal] = {}
+            found: dict[str, set[Decimal]] = {name: set() for name in gem_names}
             for i in gem_positions:
                 j = i + orientation
                 if not (0 <= j < len(tokens)) or tokens[j][0] != "carat":
-                    return None
-                try:
-                    out[tokens[i][1]] = Decimal(tokens[j][1])
-                except InvalidOperation:
-                    return None
-            return out
+                    continue
+                with contextlib.suppress(InvalidOperation):
+                    found[tokens[i][1]].add(Decimal(tokens[j][1]))
+            if any(len(values) != 1 for values in found.values()):
+                return None
+            return {name: values.copy().pop() for name, values in found.items()}
 
         # Jewelry specs are written one way or the other within a single row — either
         # "0.25 ct Diamond, 0.50 ct Aquamarine" or "Diamond 0.25 ct, Aquamarine 0.50 ct".
@@ -372,20 +376,6 @@ class ProductParser:
             return after
         if before is not None and after is not None and before == after:
             return before
-
-        # Fall back to the strict single-neighbour rule for the one-gem case.
-        if len(gem_positions) == 1:
-            i = gem_positions[0]
-            neighbours = [
-                tokens[j][1] for j in (i - 1, i + 1)
-                if 0 <= j < len(tokens) and tokens[j][0] == "carat"
-            ]
-            unique = set()
-            for raw in neighbours:
-                with contextlib.suppress(InvalidOperation):
-                    unique.add(Decimal(raw))
-            if len(unique) == 1:
-                return {tokens[i][1]: unique.pop()}
 
         self._warn(
             "AmbiguousParse",
@@ -404,7 +394,9 @@ class ProductParser:
         blob = " ".join(r.value for r in gem_specs)
         blob_key = gem_specs[0].provenance_key if gem_specs else "specs"
         title_blob = f"{title} {blob}"
-        carats = self._carat_by_gem(title_blob)
+        # Weight association runs on the Item Details rows alone. The marketing title names
+        # the same stones again without their weights, and is not an authoritative record.
+        carats = self._carat_by_gem(blob)
         gems: list[Gemstone] = []
         for gtype in GEM_TYPES:
             if not re.search(rf"\b{gtype}", title_blob, re.IGNORECASE):
