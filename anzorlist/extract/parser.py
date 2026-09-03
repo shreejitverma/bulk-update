@@ -49,7 +49,11 @@ _ID_PRODUCT_RE = re.compile(r"idProduct=(\d+)")
 _ID_PRODUCT_INPUT_RE = re.compile(r'name=["\']?idProduct["\']?\s+value=["\']?(\d+)', re.IGNORECASE)
 _CARAT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:ct|cts|cwt|carat)", re.IGNORECASE)
 
-GEM_TYPES = ("Diamond", "Sapphire", "Emerald", "Ruby", "Pearl", "Topaz", "Amethyst", "Garnet")
+GEM_TYPES = (
+    "Diamond", "Sapphire", "Ruby", "Emerald", "Pearl", "Topaz", "Amethyst", "Garnet",
+    "Aquamarine", "Opal", "Tanzanite", "Morganite", "Citrine", "Peridot", "Tourmaline",
+    "Onyx", "Turquoise", "Jade", "Moissanite", "Zircon",
+)
 
 
 def _quantize(value: Decimal) -> Decimal:
@@ -307,6 +311,91 @@ class ProductParser:
             gemstones=gemstones,
         )
 
+    def _carat_by_gem(self, text: str) -> dict[str, Decimal]:
+        """Associate each carat figure with the gem it actually belongs to.
+
+        A multi-stone row like ``.25 cwt. Diamonds 0.50ct. Aquamarine (Total Weights)`` is the
+        case that matters. The naive "nearest carat figure to this gem name" search happily
+        crosses another gem name and attaches the aquamarine's 0.50 ct to the diamond — which
+        publishes a diamond weight double the real one. Overstating carat weight is an FTC
+        Jewelry Guides violation, so the rule here is strict:
+
+        * scan the text once, in order, recording every carat figure and every gem name;
+        * bind a figure to a gem only if they are *adjacent* in that sequence, with no other
+          gem name or carat figure between them;
+        * if a gem ends up with more than one candidate figure, record none for it.
+
+        An unassociated weight is a warning and an omitted attribute. That is recoverable —
+        the operator fills it in from the spreadsheet. A wrong weight is not.
+        """
+        gem_alt = "|".join(GEM_TYPES)
+        token_re = re.compile(
+            rf"(?P<carat>\d*\.?\d+)\s*(?:ct|cts|cwt|carat)s?\b|(?P<gem>{gem_alt})s?\b",
+            re.IGNORECASE,
+        )
+        tokens: list[tuple[str, str]] = []
+        for m in token_re.finditer(text):
+            if m.group("carat"):
+                tokens.append(("carat", m.group("carat")))
+            else:
+                tokens.append(("gem", m.group("gem").lower()))
+
+        gem_positions = [i for i, (kind, _) in enumerate(tokens) if kind == "gem"]
+        if not gem_positions:
+            return {}
+
+        def read(orientation: int) -> dict[str, Decimal] | None:
+            """Bind each gem to the carat token at ``orientation`` (-1 before, +1 after).
+
+            Returns ``None`` unless *every* gem in the text is satisfied — a partial match
+            means the row does not follow this layout consistently, and a consistent layout
+            is the only thing that makes the binding safe.
+            """
+            out: dict[str, Decimal] = {}
+            for i in gem_positions:
+                j = i + orientation
+                if not (0 <= j < len(tokens)) or tokens[j][0] != "carat":
+                    return None
+                try:
+                    out[tokens[i][1]] = Decimal(tokens[j][1])
+                except InvalidOperation:
+                    return None
+            return out
+
+        # Jewelry specs are written one way or the other within a single row — either
+        # "0.25 ct Diamond, 0.50 ct Aquamarine" or "Diamond 0.25 ct, Aquamarine 0.50 ct".
+        # Accept a layout only when it explains every gem present and the other layout does not.
+        before, after = read(-1), read(+1)
+        if before is not None and after is None:
+            return before
+        if after is not None and before is None:
+            return after
+        if before is not None and after is not None and before == after:
+            return before
+
+        # Fall back to the strict single-neighbour rule for the one-gem case.
+        if len(gem_positions) == 1:
+            i = gem_positions[0]
+            neighbours = [
+                tokens[j][1] for j in (i - 1, i + 1)
+                if 0 <= j < len(tokens) and tokens[j][0] == "carat"
+            ]
+            unique = set()
+            for raw in neighbours:
+                with contextlib.suppress(InvalidOperation):
+                    unique.add(Decimal(raw))
+            if len(unique) == 1:
+                return {tokens[i][1]: unique.pop()}
+
+        self._warn(
+            "AmbiguousParse",
+            "attributes.gemstones",
+            "carat weights could not be matched to gemstones unambiguously in "
+            f"{len(gem_positions)}-stone row; omitting rather than guessing — "
+            "set 'Total Gem Weight (ct)' in the spreadsheet",
+        )
+        return {}
+
     def _gemstones(self, specs: list[SpecRow], title: str) -> list[Gemstone]:
         """Best-effort. The authoritative record is the raw specs; this never invents a spec."""
         gem_specs = [
@@ -315,24 +404,12 @@ class ProductParser:
         blob = " ".join(r.value for r in gem_specs)
         blob_key = gem_specs[0].provenance_key if gem_specs else "specs"
         title_blob = f"{title} {blob}"
+        carats = self._carat_by_gem(title_blob)
         gems: list[Gemstone] = []
         for gtype in GEM_TYPES:
             if not re.search(rf"\b{gtype}", title_blob, re.IGNORECASE):
                 continue
-            # carat: nearest carat figure mentioned alongside this gem type, if any
-            carat = None
-            near = re.search(
-                rf"(\d+(?:\.\d+)?)\s*(?:ct|cts|cwt|carat)[^.]*?{gtype}"
-                rf"|{gtype}[^.]*?(\d+(?:\.\d+)?)\s*(?:ct|cts|cwt|carat)",
-                title_blob,
-                re.IGNORECASE,
-            )
-            if near:
-                num = near.group(1) or near.group(2)
-                try:
-                    carat = Decimal(num)
-                except (InvalidOperation, TypeError):
-                    carat = None
+            carat = carats.get(gtype.lower())
             genuine = bool(re.search(r"genuine|natural", blob, re.IGNORECASE)) or None
             origin = None
             if re.search(r"\bnatural\b|\bgenuine\b|ceylon|sri lanka|origin", blob, re.IGNORECASE):

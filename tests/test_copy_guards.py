@@ -213,3 +213,53 @@ class TestFtcRules:
             bullets=[], description="", search_terms="",
         )
         assert not any(i.code == "FtcPlatingOmitted" for i in report.errors)
+
+
+class TestCaratGemAssociation:
+    """Binding carat weights to the right stone.
+
+    Regression guard for a real defect found on live SKU R1279, whose Item Details read
+    ``.25 cwt. Diamonds 0.50ct. Aquamarine``. The original "nearest carat figure" search
+    crossed a gem name and attached the aquamarine's 0.50 ct to the diamond — publishing a
+    diamond weight double the true one. Overstating carat weight is an FTC Jewelry Guides
+    violation, and the copy validator cannot catch it because the error is in the extracted
+    attribute, not in generated prose.
+    """
+
+    @staticmethod
+    def _parse(text: str):
+        from anzorlist.extract.parser import ProductParser
+
+        parser = ProductParser.__new__(ProductParser)
+        parser.warnings = []
+        return parser, {k: str(v) for k, v in parser._carat_by_gem(text).items()}
+
+    def test_multi_stone_weight_precedes_gem(self):
+        _, got = self._parse(".25 cwt. Diamonds 0.50ct. Aquamarine (Total Weights)")
+        assert got == {"diamond": "0.25", "aquamarine": "0.50"}
+
+    def test_multi_stone_weight_follows_gem(self):
+        _, got = self._parse("Diamond 0.25 ct, Aquamarine 0.50 ct")
+        assert got == {"diamond": "0.25", "aquamarine": "0.50"}
+
+    @pytest.mark.parametrize("text", ["1.45 ct Sapphire", "Sapphire 1.45ct", "1.45 carat Sapphire"])
+    def test_single_stone_either_orientation(self, text: str):
+        _, got = self._parse(text)
+        assert got == {"sapphire": "1.45"}
+
+    def test_shared_total_weight_is_refused_not_split(self):
+        """'Diamonds and Sapphires 2.00 ctw' gives no per-stone weight. Guessing would be wrong."""
+        parser, got = self._parse("Diamonds and Sapphires 2.00 ctw")
+        assert got == {}
+        assert any(w.kind == "AmbiguousParse" for w in parser.warnings)
+
+    def test_no_gems_yields_nothing(self):
+        _, got = self._parse("Gemstone(s) --")
+        assert got == {}
+
+    def test_aquamarine_is_in_the_vocabulary(self):
+        """It was absent, so the stone vanished from the listing entirely."""
+        from anzorlist.extract.parser import GEM_TYPES
+
+        for gem in ("Aquamarine", "Tanzanite", "Morganite", "Moissanite", "Opal"):
+            assert gem in GEM_TYPES
