@@ -263,3 +263,50 @@ class TestCaratGemAssociation:
 
         for gem in ("Aquamarine", "Tanzanite", "Morganite", "Moissanite", "Opal"):
             assert gem in GEM_TYPES
+
+
+class TestRealMultiStoneFixture:
+    """End-to-end guard on the SKU that exposed the carat-association defect.
+
+    The synthetic cases above test the algorithm; this tests the real page, so a future
+    change to spec-row selection or title handling cannot quietly reintroduce the bug.
+    """
+
+    @staticmethod
+    def _r1279():
+        import hashlib
+        from pathlib import Path
+
+        from anzorlist.extract.client import FetchResult, SiteClient
+        from anzorlist.extract.parser import parse_product
+
+        path = Path(__file__).parent / "fixtures" / "R1279.html"
+        raw = path.read_bytes()
+        html, encoding = SiteClient._decode(raw)
+        return parse_product(FetchResult(
+            sku="R1279",
+            url="https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=R1279",
+            html=html, raw_bytes=raw, content_hash=hashlib.sha256(raw).hexdigest(),
+            encoding=encoding, from_cache=True, cache_path=path,
+        ))
+
+    def test_source_row_really_is_two_stones(self):
+        """Guards the premise: if the page changes, the rest of this class is meaningless."""
+        gem_row = next(r for r in self._r1279().specs if "gem" in r.label.lower())
+        assert "Diamond" in gem_row.value and "Aquamarine" in gem_row.value
+
+    def test_diamond_gets_its_own_weight_not_the_aquamarine_s(self):
+        from decimal import Decimal
+
+        diamond = next(g for g in self._r1279().attributes.gemstones if g.type == "Diamond")
+        assert diamond.carat_weight == Decimal("0.25"), (
+            "the diamond must not inherit the aquamarine's 0.50 ct — overstating carat "
+            "weight is an FTC Jewelry Guides violation"
+        )
+
+    def test_second_stone_is_not_dropped(self):
+        from decimal import Decimal
+
+        gems = {g.type: g.carat_weight for g in self._r1279().attributes.gemstones}
+        assert "Aquamarine" in gems, "aquamarine was missing from GEM_TYPES and vanished"
+        assert gems["Aquamarine"] == Decimal("0.50")
