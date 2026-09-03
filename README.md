@@ -1,1 +1,136 @@
-# anzordiamonds
+# anzorlist
+
+Turn products on [anzorjewelrycorp.com](https://www.anzorjewelrycorp.com) into Amazon listings —
+without letting anything reach the marketplace unreviewed.
+
+You fill in SKUs. The system extracts each product from the website, writes compliant copy from
+the extracted facts, prices it so Amazon's fee doesn't eat your margin, hosts the images, builds
+the listing payload, and validates it against Amazon's own schema. Nothing is created on Amazon
+until you explicitly say so, twice.
+
+```
+Product Listing.xlsx          you fill in the SKU column
+        │
+        ▼
+   extract                    prodview.asp → Product (every value carries provenance)
+        │
+        ├── media             download → validate against Amazon's rules → host on R2
+        ├── copy              Claude writes it; a validator checks every claim against the specs
+        └── price             web price ÷ (1 − fee), so you net the web price
+        │
+        ▼
+    map                       → Amazon attributes; ring sizes become a real variation family
+    schema check              against Amazon's own JSON Schema, offline, no credentials
+        │
+   ─────┼───────────────────────────────────────────────────  network boundary
+        ▼
+  amazon validate             Amazon's VALIDATION_PREVIEW — creates nothing
+  amazon submit --confirm     the only command that writes
+```
+
+## Quick start
+
+```bash
+uv sync
+cp .env.example .env
+
+anzorlist doctor              # what's configured, what's missing, and how to fix it
+anzorlist workbook init       # generates Product Listing.xlsx
+# → fill in the SKU column. Hover any header for what it does.
+anzorlist workbook validate   # every error at once, with cell references
+anzorlist build               # payloads land in data/build/
+```
+
+`build` needs no Amazon credentials. That's deliberate — the payload on disk is the thing you
+review, and producing it costs nothing.
+
+## Why the pieces are the way they are
+
+**Pricing is a gross-up, not a markup.** Amazon's fine-jewelry referral fee comes off the top. A
+20% markup on a $1,000 piece nets $960 — a 4% loss, invisible on any single line and compounding
+across the catalog. `web ÷ (1 − 0.20)` nets exactly $1,000. `PRICE_MARKUP_AMAZON` is read as
+"the fee fraction to absorb", so the intuitive setting produces the correct arithmetic.
+
+**Generated copy is never trusted.** Jewelry copy is a legal document — under the FTC Jewelry
+Guides an unqualified "diamond" means a *natural* diamond. So every generated claim is checked
+mechanically against the verbatim spec rows from the source page. A carat weight that isn't in
+the specs fails. "Lab-grown sapphire" shortened to "sapphire" fails. "Gold plated" shortened to
+"gold" fails. On failure the model is retried with the specific errors, then escalated to a
+stronger model, then falls back to a spec-sheet rendering that cannot hallucinate because it
+only restates extracted rows.
+
+**Ring sizes are a variation family, not 29 listings.** One parent, one detail page, one review
+count, one Buy Box — with each size's price delta from the site applied to its own child.
+
+**The schema check runs offline.** Amazon publishes a JSON Schema per product type per
+marketplace. Once cached, every payload is validated against Amazon's real rules in
+milliseconds, for the whole catalog, with no API calls and no rate limit. This is the highest-
+leverage check in the system and it's the one that works before your SP-API registration
+completes.
+
+**Three gates before anything goes live.** `--confirm` on the command, `ANZOR_ALLOW_LIVE=true`
+in the environment, and an interactive prompt. They're independent on purpose: neither a stray
+flag nor a stale config value can cause a write alone.
+
+## Commands
+
+| Command | Network | What it does |
+|---|---|---|
+| `doctor` | none | Configuration and credential check, with the fix for each gap |
+| `workbook init` | none | Generate the workbook; existing rows are preserved |
+| `workbook validate` | none | Validate every row, report every error with cell references |
+| `build [SKUS...]` | Anzor site, Anthropic, R2 | Extract → copy → price → map → schema-check |
+| `amazon preflight` | SP-API (read) | Marketplace registration and category gating |
+| `amazon sync-schemas` | SP-API (read) | Cache Amazon's JSON schemas for offline validation |
+| `amazon validate` | SP-API (dry run) | Amazon validates the payload and creates nothing |
+| `amazon submit --confirm` | SP-API (**write**) | Creates listings |
+| `amazon status [SKU]` | none | Ledger state and submission history |
+| `amazon delete --confirm` | SP-API (**write**) | Remove an offer |
+
+## The workbook
+
+Only **SKU** is required. Every other column is an override that beats the extracted site value;
+a blank cell always defers to the website and can never blank out a value. Columns are grouped —
+Control, Offer, Copy, Attributes — and every header carries a hover note explaining what it does
+and when to leave it alone.
+
+The generated workbook includes four worked example rows (the SKUs with committed test fixtures),
+a "How to use" sheet, a Reference sheet with every marketplace code, and an Upload Results tab
+that gets filled in after a run.
+
+## Layout
+
+```
+anzorlist/
+  config.py            settings; secrets have no defaults, safety flags fail closed
+  marketplaces.py      marketplace registry (region → endpoint, currency, locale)
+  pricing.py           the gross-up
+  pipeline.py          orchestration; stages 1–6 need no Amazon credentials
+  cli.py               Typer CLI, grouped by safety boundary
+  ingest/              workbook schema, template writer, validated reader
+  extract/             site client (throttle, cache, encoding) + provenance-tracking parser
+  generate/            sanitize → generate → validate; escalation on validator failure
+  media/               download, Amazon-requirement checks, R2 hosting
+  channels/amazon/     auth, rate-limited transport, definitions, preflight, listings, feeds, mapper
+  store/               SQLite submission ledger
+docs/RUNBOOK.md        SP-API registration, GTIN exemption, first live listing
+```
+
+## Tests
+
+```bash
+uv run pytest          # 113 tests, no network, no credentials
+```
+
+The suite runs entirely against four committed HTML fixtures. The safety-critical tests are the
+FTC claim checks in `test_copy_guards.py` and the live-write gates in
+`test_workbook_and_safety.py` — those assert the system *refuses* to act, which is the kind of
+regression that fails silently.
+
+## Status
+
+Working end to end offline. Amazon calls are implemented and gated but unexercised against a
+live account — SP-API developer registration is pending. See `docs/RUNBOOK.md` for that path.
+
+eBay and Etsy adapters are stubs; the `Product` model and the copy/pricing layers are
+channel-neutral by design, so they slot in beside `channels/amazon/`.

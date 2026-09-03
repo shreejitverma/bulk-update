@@ -1,0 +1,190 @@
+"""Runtime configuration, loaded from the environment / ``.env``.
+
+Two rules govern this module:
+
+1. **Secrets never get defaults.** A missing credential must surface as an explicit, readable
+   error at the moment it is needed, not as a silent fallback that produces a confusing 403.
+2. **Safety settings fail closed.** ``allow_live`` defaults to ``False``. Publishing to a live
+   marketplace requires flipping it *and* passing ``--confirm`` at the call site; neither alone
+   is sufficient.
+
+Credentials are per-region, not per-marketplace: one self-authorization covers every marketplace
+in a region, so NA (US/CA/MX) and EU (UK/DE/FR/...) each need their own refresh token and their
+own seller ID. See :mod:`anzorlist.marketplaces`.
+"""
+
+from __future__ import annotations
+
+from decimal import Decimal
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic import Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from anzorlist.marketplaces import Region
+
+
+class MissingCredential(RuntimeError):
+    """A required credential is absent. Carries the exact env var to set."""
+
+    def __init__(self, var: str, why: str) -> None:
+        super().__init__(
+            f"Missing credential {var}. {why}\n"
+            f"Set it in .env (see .env.example), or run `anzorlist doctor` for a full checklist."
+        )
+        self.var = var
+
+
+class Settings(BaseSettings):
+    """All tunables in one place. Instantiate via :func:`settings`, not directly."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+    )
+
+    # ---- Paths ----
+    data_dir: Path = Field(default=Path("data"), alias="ANZOR_DATA_DIR")
+    workbook_path: Path = Field(default=Path("Product Listing.xlsx"), alias="ANZOR_WORKBOOK")
+    state_db: Path = Field(default=Path("data/anzorlist.sqlite"), alias="ANZOR_STATE_DB")
+
+    # ---- Site extraction ----
+    base_url: str = Field(default="https://www.anzorjewelrycorp.com", alias="ANZOR_BASE_URL")
+    user_agent: str = Field(
+        default="Mozilla/5.0 (compatible; anzorlist/0.1; +ops@anzorjewelrycorp.com)",
+        alias="ANZOR_USER_AGENT",
+    )
+    req_per_sec: float = Field(default=1.0, alias="ANZOR_REQ_PER_SEC")
+
+    # ---- Brand / seller identity (goes into every listing) ----
+    brand_name: str = Field(default="Anzor Jewelry", alias="ANZOR_BRAND_NAME")
+    manufacturer: str = Field(default="Anzor Jewelry Corp", alias="ANZOR_MANUFACTURER")
+    country_of_origin: str = Field(default="US", alias="ANZOR_COUNTRY_OF_ORIGIN")
+    is_brand_registered: bool = Field(default=False, alias="ANZOR_BRAND_REGISTERED")
+
+    # ---- Copy generation ----
+    anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
+    copy_model: str = Field(default="claude-sonnet-5", alias="ANZOR_COPY_MODEL")
+    copy_model_escalation: str = Field(
+        default="claude-opus-5", alias="ANZOR_COPY_MODEL_ESCALATION"
+    )
+
+    # ---- Pricing ----
+    markup_amazon: Decimal = Field(default=Decimal("0.20"), alias="PRICE_MARKUP_AMAZON")
+    markup_ebay: Decimal = Field(default=Decimal("0.15"), alias="PRICE_MARKUP_EBAY")
+    markup_etsy: Decimal = Field(default=Decimal("0.09"), alias="PRICE_MARKUP_ETSY")
+    price_floor: Decimal = Field(default=Decimal("10.00"), alias="PRICE_FLOOR")
+
+    # ---- Image hosting (Cloudflare R2, S3-compatible) ----
+    r2_account_id: str | None = Field(default=None, alias="R2_ACCOUNT_ID")
+    r2_access_key_id: SecretStr | None = Field(default=None, alias="R2_ACCESS_KEY_ID")
+    r2_secret_access_key: SecretStr | None = Field(default=None, alias="R2_SECRET_ACCESS_KEY")
+    r2_bucket: str | None = Field(default=None, alias="R2_BUCKET")
+    r2_public_base_url: str | None = Field(default=None, alias="R2_PUBLIC_BASE_URL")
+
+    # ---- Amazon SP-API ----
+    lwa_client_id: SecretStr | None = Field(default=None, alias="SPAPI_LWA_CLIENT_ID")
+    lwa_client_secret: SecretStr | None = Field(default=None, alias="SPAPI_LWA_CLIENT_SECRET")
+
+    refresh_token_na: SecretStr | None = Field(default=None, alias="SPAPI_REFRESH_TOKEN_NA")
+    refresh_token_eu: SecretStr | None = Field(default=None, alias="SPAPI_REFRESH_TOKEN_EU")
+    refresh_token_fe: SecretStr | None = Field(default=None, alias="SPAPI_REFRESH_TOKEN_FE")
+
+    seller_id_na: str | None = Field(default=None, alias="SPAPI_SELLER_ID_NA")
+    seller_id_eu: str | None = Field(default=None, alias="SPAPI_SELLER_ID_EU")
+    seller_id_fe: str | None = Field(default=None, alias="SPAPI_SELLER_ID_FE")
+
+    marketplaces: str = Field(default="US", alias="ANZOR_MARKETPLACES")
+    use_sandbox: bool = Field(default=False, alias="SPAPI_SANDBOX")
+
+    # ---- Safety ----
+    allow_live: bool = Field(default=False, alias="ANZOR_ALLOW_LIVE")
+    default_quantity: int = Field(default=1, alias="ANZOR_DEFAULT_QUANTITY")
+    handling_time_days: int = Field(default=3, alias="ANZOR_HANDLING_TIME_DAYS")
+
+    @field_validator("markup_amazon", "markup_ebay", "markup_etsy")
+    @classmethod
+    def _sane_markup(cls, v: Decimal) -> Decimal:
+        if not (Decimal("0") <= v < Decimal("1")):
+            raise ValueError(
+                f"markup must be a fraction in [0, 1) — got {v}. "
+                "0.20 means 'absorb a 20% fee', not '20x'."
+            )
+        return v
+
+    # ---- Per-region credential accessors (raise, never return a silent None) ----
+
+    def refresh_token(self, region: Region) -> str:
+        token = {
+            Region.NA: self.refresh_token_na,
+            Region.EU: self.refresh_token_eu,
+            Region.FE: self.refresh_token_fe,
+        }[region]
+        if token is None:
+            raise MissingCredential(
+                f"SPAPI_REFRESH_TOKEN_{region.value.upper()}",
+                f"Each SP-API region needs its own self-authorization. "
+                f"You have not authorized the {region.value.upper()} region yet.",
+            )
+        return token.get_secret_value()
+
+    def seller_id(self, region: Region) -> str:
+        sid = {
+            Region.NA: self.seller_id_na,
+            Region.EU: self.seller_id_eu,
+            Region.FE: self.seller_id_fe,
+        }[region]
+        if sid is None:
+            raise MissingCredential(
+                f"SPAPI_SELLER_ID_{region.value.upper()}",
+                "This is your Merchant Token, found in Seller Central under "
+                "Settings > Account Info > Merchant Token.",
+            )
+        return sid
+
+    def client_credentials(self) -> tuple[str, str]:
+        if self.lwa_client_id is None:
+            raise MissingCredential(
+                "SPAPI_LWA_CLIENT_ID", "Created when you register an SP-API app in Seller Central."
+            )
+        if self.lwa_client_secret is None:
+            raise MissingCredential(
+                "SPAPI_LWA_CLIENT_SECRET", "Shown once when the SP-API app is created."
+            )
+        return self.lwa_client_id.get_secret_value(), self.lwa_client_secret.get_secret_value()
+
+    def has_spapi_credentials(self) -> bool:
+        """True when a live call could at least be attempted. Used to pick offline mode."""
+        return self.lwa_client_id is not None and self.lwa_client_secret is not None
+
+    # ---- Derived paths ----
+
+    @property
+    def raw_dir(self) -> Path:
+        return self.data_dir / "raw"
+
+    @property
+    def parsed_dir(self) -> Path:
+        return self.data_dir / "parsed"
+
+    @property
+    def media_dir(self) -> Path:
+        return self.data_dir / "media"
+
+    @property
+    def schema_cache_dir(self) -> Path:
+        return self.data_dir / "schemas"
+
+    @property
+    def build_dir(self) -> Path:
+        """Rendered listing payloads, one JSON per SKU per marketplace. Auditable artifacts."""
+        return self.data_dir / "build"
+
+
+@lru_cache(maxsize=1)
+def settings() -> Settings:
+    """Process-wide settings singleton."""
+    return Settings()  # type: ignore[call-arg]

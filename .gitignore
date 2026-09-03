@@ -21,3 +21,9 @@ data/media/
 *.sqlite3
 
 # Keep committed fixtures under tests/fixtures/
+
+# Runtime build artifacts and caches
+data/build/
+data/schemas/
+data/parsed/
+*.backup.xlsx

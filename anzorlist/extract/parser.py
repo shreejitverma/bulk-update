@@ -13,6 +13,7 @@ is recorded as an :class:`ExtractionWarning`, never fabricated.
 
 from __future__ import annotations
 
+import contextlib
 import re
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -247,7 +248,9 @@ class ProductParser:
             value = _collapse(val_el.get_text(" "))
             if not label or not value:
                 continue
-            key = self._prov(f"specs[{label}]", 'itemprop="additionalProperty"', f"{label}: {value}")
+            key = self._prov(
+                f"specs[{label}]", 'itemprop="additionalProperty"', f"{label}: {value}"
+            )
             rows.append(SpecRow(label=label, value=value, provenance_key=key))
         if not rows:
             self._warn("MissingField", "specs", "no additionalProperty rows")
@@ -278,10 +281,8 @@ class ProductParser:
         if weight:
             gm = _GRAMS_RE.search(weight.value)
             if gm:
-                try:
+                with contextlib.suppress(InvalidOperation):
                     gross_weight_g = Decimal(gm.group(1))
-                except InvalidOperation:
-                    pass
 
         measurements: dict[str, str] = {}
         size_row = by_label.get("size")
@@ -291,7 +292,9 @@ class ProductParser:
         gemstones = self._gemstones(specs, title)
 
         if metal_purity is None:
-            self._warn("MissingField", "attributes.metal_purity", "purity not parsed from Metal row")
+            self._warn(
+                "MissingField", "attributes.metal_purity", "purity not parsed from Metal row"
+            )
         if not gemstones:
             self._warn("MissingField", "attributes.gemstones", "no gemstone parsed (see raw specs)")
 
