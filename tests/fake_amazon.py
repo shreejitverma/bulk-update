@@ -39,6 +39,7 @@ class FakeAmazon:
     feed_documents: dict[str, dict[str, Any]] = field(default_factory=dict)
     feeds: dict[str, dict[str, Any]] = field(default_factory=dict)
     token_requests: int = 0
+    deleted: list[str] = field(default_factory=list)
 
     @property
     def transport(self) -> httpx.MockTransport:
@@ -71,6 +72,11 @@ class FakeAmazon:
     def _listings(self, request: httpx.Request) -> httpx.Response:
         _seller, encoded_sku = request.url.path[len(LISTINGS_PREFIX) :].split("/", 1)
         sku = unquote(encoded_sku)
+        if request.method == "DELETE":
+            self.deleted.append(sku)
+            return httpx.Response(
+                200, json={"sku": sku, "status": "ACCEPTED", "submissionId": "del", "issues": []}
+            )
         mode = request.url.params.get("mode", "SUBMIT")
         body = json.loads(request.content)
         self.listing_calls.append(ListingCall(sku=sku, mode=mode, body=body))
@@ -93,11 +99,12 @@ class FakeAmazon:
                     ],
                 },
             )
+        # Amazon answers a clean VALIDATION_PREVIEW with VALID and a clean write with ACCEPTED.
         return httpx.Response(
             200,
             json={
                 "sku": sku,
-                "status": "ACCEPTED",
+                "status": "VALID" if mode == "VALIDATION_PREVIEW" else "ACCEPTED",
                 "submissionId": f"sub-{len(self.listing_calls)}",
                 "issues": [],
             },

@@ -24,7 +24,7 @@ from typing import Any, Literal
 
 import structlog
 
-from anzorlist.channels.amazon.client import SpApiClient, SpApiError
+from anzorlist.channels.amazon.client import SpApiClient, SpApiError, SpApiThrottled
 from anzorlist.config import Settings
 from anzorlist.marketplaces import Marketplace
 from anzorlist.models.listing import (
@@ -108,6 +108,19 @@ class ListingsClient:
                 operation="putListingsItem",
                 params=params,
                 json_body=listing.body(),
+            )
+        except SpApiThrottled as exc:
+            # Still throttled after every retry. The listing was not written; say so per listing
+            # rather than aborting a batch whose earlier writes must still be recorded.
+            return SubmissionOutcome(
+                sku=listing.sku,
+                marketplace_id=marketplace.marketplace_id,
+                marketplace_code=marketplace.code,
+                mode=mode,
+                status=ListingStatus.ERROR,
+                issues=[ListingIssue(code="Throttled", message=str(exc), source="amazon")],
+                submitted_at=datetime.now(timezone.utc),
+                payload_hash=listing.payload_hash,
             )
         except SpApiError as exc:
             return SubmissionOutcome(
@@ -204,8 +217,12 @@ class ListingsClient:
             sku=sku,
             marketplace_id=marketplace.marketplace_id,
             marketplace_code=marketplace.code,
-            mode="SUBMIT",
-            status=ListingStatus.PENDING,
+            mode="DELETE",
+            status=(
+                ListingStatus.ACCEPTED
+                if str(payload.get("status", "")).upper() == "ACCEPTED"
+                else ListingStatus.ERROR
+            ),
             submission_id=payload.get("submissionId"),
             request_id=resp.request_id,
             http_status=resp.status,
@@ -271,9 +288,12 @@ def _outcome_from_response(
 ) -> SubmissionOutcome:
     """Translate a Listings Items response into a :class:`SubmissionOutcome`.
 
-    Amazon's ``status`` is ``ACCEPTED`` or ``INVALID``. ``ACCEPTED`` in VALIDATION_PREVIEW mode
-    means "this would work" — nothing was created. Warnings can accompany an acceptance and are
-    kept, because a warning today is frequently a suppression next quarter.
+    Amazon's ``status`` is one of ``VALID``, ``ACCEPTED`` or ``INVALID``. A clean
+    VALIDATION_PREVIEW answers ``VALID`` ("this would work"; nothing was created) and a clean
+    write answers ``ACCEPTED``. Anything else - an empty body, an unknown status - is recorded as
+    an ERROR, never as success and never as "pending": nothing would ever reconcile it later.
+    Warnings can accompany success and are kept, because a warning today is frequently a
+    suppression next quarter.
     """
     data = payload if isinstance(payload, dict) else {}
     issues = [
@@ -290,7 +310,8 @@ def _outcome_from_response(
     amazon_status = str(data.get("status", "")).upper()
     has_error = any(i.blocking for i in issues)
 
-    if amazon_status == "ACCEPTED" and not has_error:
+    success = {"VALID", "ACCEPTED"} if mode == "VALIDATION_PREVIEW" else {"ACCEPTED"}
+    if amazon_status in success and not has_error:
         status = (
             ListingStatus.VALIDATED if mode == "VALIDATION_PREVIEW" else ListingStatus.SUBMITTED
         )
@@ -301,7 +322,15 @@ def _outcome_from_response(
             else ListingStatus.REJECTED
         )
     else:
-        status = ListingStatus.PENDING
+        status = ListingStatus.ERROR
+        issues.append(
+            ListingIssue(
+                code="UnrecognizedResponse",
+                message=f"Amazon answered {mode} with status {amazon_status or '(none)'!r}; "
+                f"the outcome is unknown, so it is treated as a failure and will be resent",
+                source="amazon",
+            )
+        )
 
     outcome = SubmissionOutcome(
         sku=listing.sku,

@@ -33,8 +33,9 @@ from pathlib import Path
 
 import structlog
 
-from anzorlist.channels.amazon.client import ClientPool
+from anzorlist.channels.amazon.client import ClientPool, SpApiError, SpApiThrottled
 from anzorlist.channels.amazon.feeds import (
+    FeedError,
     FeedManifest,
     FeedPending,
     FeedsClient,
@@ -104,20 +105,29 @@ class SubmissionPlan:
 def plan_submission(
     listings: list[BuiltListing],
     state: Callable[[BuiltListing], SubmissionState],
+    *,
+    family: list[BuiltListing] | None = None,
 ) -> SubmissionPlan:
+    """Sort ``listings`` into buckets.
+
+    ``family`` is every built listing, not just the selected ones. Parent and child checks look
+    there, so selecting one child by its own SKU still sees that its parent is blocked, and
+    selecting only a parent still sees whether any of its children can go.
+    """
     plan = SubmissionPlan()
+    everything = family if family is not None else listings
     blocked_parents: set[tuple[str, str] | None] = {
-        (x.marketplace_id, x.sku) for x in listings if x.is_parent and not x.submittable
+        (x.marketplace_id, x.sku) for x in everything if x.is_parent and not x.submittable
     }
-    # A parent whose selected children are all blocked would be created empty: a detail page
-    # with nothing to buy. It waits until at least one child can go with it.
+    # A parent whose children are all blocked would be created empty: a detail page with
+    # nothing to buy. It waits until at least one child can go with it.
     children: dict[tuple[str, str] | None, list[BuiltListing]] = {}
-    for x in listings:
+    for x in everything:
         if x.parent_sku:
             children.setdefault(_parent_key(x), []).append(x)
     childless_parents = {
         (x.marketplace_id, x.sku)
-        for x in listings
+        for x in everything
         if x.is_parent
         and (kids := children.get((x.marketplace_id, x.sku)))
         and not any(k.submittable for k in kids)
@@ -181,6 +191,10 @@ class AmazonSubmitter:
         self._ledger = ledger
         self._run_id = run_id
         self._poll_interval_s = feed_poll_interval_s
+        # Everything this invocation produced, appended as it happens, so a caller can still
+        # report and close the run if a later step raises.
+        self.outcomes: list[SubmissionOutcome] = []
+        self.feed_run = FeedRun()
 
     @property
     def feeds_dir(self) -> Path:
@@ -191,6 +205,15 @@ class AmazonSubmitter:
 
     def _record(self, outcome: SubmissionOutcome) -> SubmissionOutcome:
         self._ledger.record_submission(outcome, self._run_id)
+        # The report shows each listing's final word: a write, or the preview that stopped it.
+        # A passing preview is followed by its write, and a pending feed row by its result.
+        final = (
+            outcome.status is not ListingStatus.PENDING
+            if outcome.mode == "SUBMIT"
+            else not outcome.accepted
+        )
+        if final:
+            self.outcomes.append(outcome)
         return outcome
 
     # -- dry run --
@@ -215,7 +238,7 @@ class AmazonSubmitter:
         for listing in _ordered(listings):
             market = resolve(listing.marketplace_code)
             if _parent_key(listing) in failed_parents:
-                outcomes.append(_skipped_child(listing))
+                outcomes.append(self._record(_skipped_child(listing)))
                 continue
             client = self._listings_client(market)
             outcome: SubmissionOutcome | None = None
@@ -240,7 +263,7 @@ class AmazonSubmitter:
         wait: bool = True,
         timeout_s: float = 1800.0,
     ) -> FeedRun:
-        run = FeedRun()
+        run = self.feed_run
         parents = [x for x in listings if x.is_parent]
         others = [x for x in listings if not x.is_parent]
 
@@ -253,7 +276,7 @@ class AmazonSubmitter:
         by_market: dict[str, list[BuiltListing]] = {}
         for listing in others:
             if _parent_key(listing) in failed_parents:
-                run.outcomes.append(_skipped_child(listing))
+                run.outcomes.append(self._record(_skipped_child(listing)))
                 continue
             by_market.setdefault(listing.marketplace_code, []).append(listing)
 
@@ -267,7 +290,11 @@ class AmazonSubmitter:
                 run.outcomes.extend(failed)
                 failed_skus = {p.sku for p in failed}
                 run.outcomes.extend(
-                    _not_sent(x, "FeedPreviewFailed", "spot-check preview failed; feed not sent")
+                    self._record(
+                        _not_sent(
+                            x, "FeedPreviewFailed", "spot-check preview failed; feed not sent"
+                        )
+                    )
                     for x in group
                     if x.sku not in failed_skus
                 )
@@ -278,9 +305,27 @@ class AmazonSubmitter:
                 self._pool.for_region(market.region), self._settings, raw_http=self._pool.raw_http
             )
             for chunk in chunk_listings(group):
-                manifest = feeds.create(
-                    chunk, market, run_id=self._run_id, feeds_dir=self.feeds_dir, confirm=True
-                )
+                try:
+                    manifest = feeds.create(
+                        chunk, market, run_id=self._run_id, feeds_dir=self.feeds_dir, confirm=True
+                    )
+                except (FeedError, SpApiError, SpApiThrottled) as exc:
+                    # Whether Amazon created the feed is unknown. Every message is an UPDATE,
+                    # which is idempotent, so recording these as failed - and resending them
+                    # on the next run - is safe even if the feed did go through.
+                    log.error("submit.feed_create_failed", marketplace=code, error=str(exc))
+                    for listing in chunk:
+                        run.outcomes.append(
+                            self._record(
+                                _not_sent(
+                                    listing,
+                                    "FeedNotCreated",
+                                    f"the feed could not be confirmed as created ({exc}); "
+                                    f"resubmitting is safe because feed messages are upserts",
+                                )
+                            )
+                        )
+                    continue
                 run.manifests.append(manifest)
                 for listing in chunk:
                     self._record(_in_flight(listing, manifest))
@@ -292,6 +337,12 @@ class AmazonSubmitter:
                         manifest.feed_id, timeout_s=timeout_s, interval_s=self._poll_interval_s
                     )
                 except FeedPending:
+                    run.pending.append(manifest)
+                    continue
+                except (FeedError, SpApiError, SpApiThrottled) as exc:
+                    # The feed exists and its manifest is on disk; only reading the result
+                    # failed. It stays in flight for `feed-status` rather than being guessed.
+                    log.error("submit.feed_result_unread", feed_id=manifest.feed_id, error=str(exc))
                     run.pending.append(manifest)
                     continue
                 outcomes = reconcile(result, manifest)

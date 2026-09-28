@@ -18,9 +18,11 @@ Four steps, in order:
 
 **Reconciliation.** The processing report lists only messages that had issues, keyed by
 ``messageId`` - never by SKU - and a message with no ERROR issue was accepted. So the mapping
-from message ID to SKU is written to disk as a :class:`FeedManifest` *before* the feed is
-created. Without it a report cannot be attributed, and a feed whose polling times out could never
-be reconciled into the ledger afterwards.
+from message ID to SKU is written to disk as a :class:`FeedManifest` the moment Amazon returns a
+feed ID, before anything else can fail. Without it a report cannot be attributed, and a feed whose
+polling times out could never be reconciled into the ledger afterwards. If ``createFeed`` itself
+fails ambiguously, the caller records the messages as failed: every message is an ``UPDATE``
+upsert, so resending them is safe even if the feed did go through.
 """
 
 from __future__ import annotations
@@ -79,7 +81,7 @@ class FeedMessage:
 
 @dataclass
 class FeedManifest:
-    """What was sent in one feed, persisted before the feed is created."""
+    """What was sent in one feed, persisted as soon as Amazon assigns the feed ID."""
 
     feed_id: str
     marketplace_code: str
@@ -116,6 +118,14 @@ class FeedManifest:
         return path
 
     @classmethod
+    def unreconciled(cls, feeds_dir: Path) -> list[FeedManifest]:
+        """Every saved feed whose result has not been recorded in the ledger, oldest first."""
+        if not feeds_dir.exists():
+            return []
+        manifests = [cls.load(feeds_dir, p.stem) for p in feeds_dir.glob("*.json")]
+        return sorted((m for m in manifests if not m.reconciled), key=lambda m: m.created_at)
+
+    @classmethod
     def load(cls, feeds_dir: Path, feed_id: str) -> FeedManifest:
         path = feeds_dir / f"{feed_id}.json"
         if not path.exists():
@@ -144,14 +154,6 @@ class FeedResult:
     processing_status: str
     summary: dict[str, int] = field(default_factory=dict)
     report: dict[str, Any] | None = None
-
-    @property
-    def ok(self) -> bool:
-        return (
-            self.processing_status == "DONE"
-            and self.summary.get("messagesInvalid", 0) == 0
-            and self.summary.get("errors", 0) == 0
-        )
 
 
 class FeedsClient:
@@ -394,6 +396,7 @@ def reconcile(result: FeedResult, manifest: FeedManifest) -> list[SubmissionOutc
             unattributed.append(issue)
 
     feed_failed = result.processing_status != "DONE" or result.report is None
+    mismatch = "" if feed_failed or unattributed else _summary_mismatch(result, manifest, by_id)
     outcomes: list[SubmissionOutcome] = []
     for message in manifest.messages:
         issues = list(by_id.get(message.message_id, []))
@@ -409,13 +412,19 @@ def reconcile(result: FeedResult, manifest: FeedManifest) -> list[SubmissionOutc
         # A feed-level error with no messageId applies to every message in the feed.
         issues.extend(unattributed)
         rejected = any(i.blocking for i in issues)
+        unknown = bool(mismatch) and not rejected
+        final = ListingStatus.REJECTED if rejected else ListingStatus.SUBMITTED
+        if unknown:
+            issues.append(
+                ListingIssue(code="FeedReportMismatch", message=mismatch, source="amazon")
+            )
         outcomes.append(
             SubmissionOutcome(
                 sku=message.sku,
                 marketplace_id=manifest.marketplace_id,
                 marketplace_code=manifest.marketplace_code,
                 mode="SUBMIT",
-                status=ListingStatus.REJECTED if rejected else ListingStatus.SUBMITTED,
+                status=ListingStatus.ERROR if unknown else final,
                 submission_id=manifest.feed_id,
                 issues=issues,
                 submitted_at=now,
@@ -423,6 +432,30 @@ def reconcile(result: FeedResult, manifest: FeedManifest) -> list[SubmissionOutc
             )
         )
     return outcomes
+
+
+def _summary_mismatch(
+    result: FeedResult, manifest: FeedManifest, by_id: dict[int, list[ListingIssue]]
+) -> str:
+    """Why the report's own counts contradict its issue list, or "" when they agree.
+
+    A message absent from the issues is taken as accepted. That inference is only safe when the
+    summary confirms it: every message processed, and exactly as many invalid as have errors.
+    """
+    processed = result.summary.get("messagesProcessed")
+    invalid = result.summary.get("messagesInvalid")
+    with_errors = sum(1 for issues in by_id.values() if any(i.blocking for i in issues))
+    if processed is not None and processed != len(manifest.messages):
+        return (
+            f"the report says {processed} of {len(manifest.messages)} messages were processed; "
+            f"this one's outcome is unknown and it will be resent"
+        )
+    if invalid is not None and invalid != with_errors:
+        return (
+            f"the report counts {invalid} invalid messages but attributes errors to "
+            f"{with_errors}; this one's outcome is unknown and it will be resent"
+        )
+    return ""
 
 
 def _severity(raw: object) -> IssueSeverity:

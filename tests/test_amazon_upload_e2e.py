@@ -319,7 +319,7 @@ def test_unfinished_feed_is_in_flight_until_feed_status(env: dict[str, Any]) -> 
     build_ok()
     fake: FakeAmazon = env["fake"]
     result = run("amazon", "submit", "--confirm", "--feed", "--no-wait", "E1154", input="y\n")
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 3, result.output  # sent, result not known yet
     [feed_id] = fake.feeds
     assert ledger_status("E1154") == "pending"
 
@@ -327,6 +327,9 @@ def test_unfinished_feed_is_in_flight_until_feed_status(env: dict[str, Any]) -> 
     again = run("amazon", "submit", "--confirm", "--feed", "E1154", input="y\n")
     assert len(fake.feeds) == 1
     assert "not been reconciled" in again.output
+    assert again.exit_code == 3  # not "up to date": the result is still unknown
+    listed = run("amazon", "feed-status")
+    assert feed_id in listed.output
 
     fake.feed_status = "IN_PROGRESS"
     assert run("amazon", "feed-status", feed_id).exit_code == 3
@@ -334,3 +337,44 @@ def test_unfinished_feed_is_in_flight_until_feed_status(env: dict[str, Any]) -> 
     status = run("amazon", "feed-status", feed_id)
     assert status.exit_code == 0, status.output
     assert ledger_status("E1154") == "submitted"
+
+
+def test_a_failed_feed_fails_every_listing_in_it(env: dict[str, Any]) -> None:
+    build_ok()
+    env["fake"].feed_status = "FATAL"
+    result = run("amazon", "submit", "--confirm", "--feed", "E1154", input="y\n")
+    assert result.exit_code == 1
+    assert ledger_status("E1154") == "rejected"
+    assert "FeedFatal" in result.output
+
+
+def test_a_dropped_marketplace_is_not_resurrected_by_naming_the_sku(env: dict[str, Any]) -> None:
+    build_ok()
+    # Simulate an earlier build for a marketplace the row no longer names.
+    old = env["data"] / "build" / "CA" / "E1154"
+    shutil.copytree(env["data"] / "build" / "US" / "E1154", old)
+    build_ok()
+    assert not old.exists()
+
+
+def test_a_child_named_alone_is_held_when_its_parent_is_blocked(env: dict[str, Any]) -> None:
+    build_ok()
+    path = env["data"] / "build" / "US" / "R985" / "R985-PARENT.json"
+    parent = json.loads(path.read_text())
+    parent["issues"].append({"code": "SchemaViolation", "message": "x", "severity": "ERROR"})
+    path.write_text(json.dumps(parent))
+    result = run("amazon", "submit", "--confirm", "R985-7", input="y\n")
+    assert result.exit_code == 1
+    assert env["fake"].listing_calls == []
+
+
+def test_delete_then_resubmit_sends_the_same_payload_again(env: dict[str, Any]) -> None:
+    build_ok()
+    assert run("amazon", "submit", "--confirm", "E1154", input="y\n").exit_code == 0
+    writes = len(env["fake"].writes())
+    assert run("amazon", "delete", "E1154", "--confirm", input="y\n").exit_code == 0
+    assert env["fake"].deleted == ["E1154"]
+    with Ledger(settings().state_db) as ledger:
+        assert "E1154" not in {e.sku for e in ledger.live_skus()}
+    assert run("amazon", "submit", "--confirm", "E1154", input="y\n").exit_code == 0
+    assert len(env["fake"].writes()) == writes + 1

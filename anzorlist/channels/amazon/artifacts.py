@@ -52,11 +52,14 @@ def family_dir(build_dir: Path, marketplace_code: str, source_sku: str) -> Path:
     return build_dir / marketplace_code / source_sku
 
 
-def clear_family(build_dir: Path, marketplace_code: str, source_sku: str) -> None:
-    """Remove every artifact of one source SKU in one marketplace."""
-    target = family_dir(build_dir, marketplace_code, source_sku)
-    if target.exists():
-        shutil.rmtree(target)
+def clear_family(build_dir: Path, source_sku: str) -> None:
+    """Remove every artifact of one source SKU, in every marketplace."""
+    if not build_dir.exists():
+        return
+    for market_dir in build_dir.iterdir():
+        target = market_dir / source_sku
+        if market_dir.is_dir() and target.is_dir():
+            shutil.rmtree(target)
 
 
 def write_listings(build_dir: Path, listings: Iterable[BuiltListing]) -> list[Path]:

@@ -328,11 +328,10 @@ class BuildPipeline:
     def _write_artifacts(self, row: ListingRow, build: SkuBuild) -> None:
         """Replace this SKU's artifacts. The files on disk always equal the latest build.
 
-        Every marketplace the row targets is cleared first - including one that failed this time -
-        so a payload from an earlier, different build can never be submitted by mistake.
+        The SKU is cleared in every marketplace first - including one that failed this time and one
+        the row no longer names - so a payload from an earlier build can never be submitted.
         """
-        for marketplace in self._markets_for(row):
-            clear_family(self.settings.build_dir, marketplace.code, row.sku)
+        clear_family(self.settings.build_dir, row.sku)
         write_listings(self.settings.build_dir, build.listings)
 
     # ------------------------------------------------------------------ helpers

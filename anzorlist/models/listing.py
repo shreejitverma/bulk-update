@@ -142,7 +142,7 @@ class SubmissionOutcome(BaseModel):
     sku: str
     marketplace_id: str
     marketplace_code: str
-    mode: Literal["VALIDATION_PREVIEW", "SUBMIT"]
+    mode: Literal["VALIDATION_PREVIEW", "SUBMIT", "DELETE"]
     status: ListingStatus
     submission_id: str | None = None
     request_id: str | None = None

@@ -85,10 +85,27 @@ class TestReconcile:
         [outcome] = reconcile(FeedResult("F1", "DONE", report=report), _manifest("A"))
         assert outcome.status is ListingStatus.REJECTED
 
-    def test_ok_reads_the_documented_summary_fields(self) -> None:
-        bad = FeedResult("F1", "DONE", summary={"messagesInvalid": 1, "errors": 1})
-        assert not bad.ok
-        assert FeedResult("F1", "DONE", summary={"messagesInvalid": 0, "errors": 0}).ok
+    def test_summary_that_contradicts_the_issues_marks_the_rest_unknown(self) -> None:
+        # The report says one message was invalid but attributes no error to any of them.
+        report = {"issues": [], "summary": {"messagesProcessed": 2, "messagesInvalid": 1}}
+        result = FeedResult("F1", "DONE", summary=report["summary"], report=report)
+        outcomes = reconcile(result, _manifest("A", "B"))
+        assert [o.status for o in outcomes] == [ListingStatus.ERROR] * 2
+        assert outcomes[0].issues[0].code == "FeedReportMismatch"
+
+    def test_unprocessed_messages_are_not_assumed_accepted(self) -> None:
+        report = {"issues": [], "summary": {"messagesProcessed": 1, "messagesInvalid": 0}}
+        result = FeedResult("F1", "DONE", summary=report["summary"], report=report)
+        assert all(o.status is ListingStatus.ERROR for o in reconcile(result, _manifest("A", "B")))
+
+    def test_a_consistent_summary_is_trusted(self) -> None:
+        report = {
+            "issues": [{"messageId": 1, "code": "E", "severity": "ERROR", "message": ""}],
+            "summary": {"messagesProcessed": 2, "messagesInvalid": 1},
+        }
+        result = FeedResult("F1", "DONE", summary=report["summary"], report=report)
+        statuses = [o.status for o in reconcile(result, _manifest("A", "B"))]
+        assert statuses == [ListingStatus.REJECTED, ListingStatus.SUBMITTED]
 
 
 def _listing(
@@ -108,6 +125,12 @@ def _listing(
 
 
 class TestPlan:
+    def test_child_selected_alone_still_sees_its_blocked_parent(self) -> None:
+        parent = _listing("R1-PARENT", is_parent=True, blocked=True)
+        child = _listing("R1-7", parent="R1-PARENT")
+        plan = plan_submission([child], lambda x: "new", family=[parent, child])
+        assert plan.send == [] and plan.orphaned == [child]
+
     def test_parent_is_withheld_when_every_child_is_blocked(self) -> None:
         family = [
             _listing("R1-PARENT", is_parent=True),
@@ -180,3 +203,33 @@ class TestLocalImages:
         assert result.hosted_urls == []
         text = result.diagnosis()
         assert "400px" in text and str(settings.images_dir / ring.sku) in text
+
+
+class TestResponseStatus:
+    """Amazon answers a clean preview with VALID and a clean write with ACCEPTED."""
+
+    @pytest.mark.parametrize(
+        ("mode", "status", "expected"),
+        [
+            ("VALIDATION_PREVIEW", "VALID", ListingStatus.VALIDATED),
+            ("VALIDATION_PREVIEW", "ACCEPTED", ListingStatus.VALIDATED),
+            ("SUBMIT", "ACCEPTED", ListingStatus.SUBMITTED),
+            ("SUBMIT", "INVALID", ListingStatus.REJECTED),
+            ("SUBMIT", "VALID", ListingStatus.ERROR),  # a write that was only validated
+            ("SUBMIT", "", ListingStatus.ERROR),  # empty body: unknown, never "pending"
+        ],
+    )
+    def test_status_mapping(self, mode, status, expected, us) -> None:
+        from anzorlist.channels.amazon.listings import _outcome_from_response
+
+        outcome = _outcome_from_response({"status": status}, _listing("S1"), us, mode, None, 200)
+        assert outcome.status is expected
+
+
+def test_feeds_are_chunked_by_message_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    from anzorlist.channels.amazon import feeds
+
+    monkeypatch.setattr(feeds, "MAX_MESSAGES_PER_FEED", 2)
+    chunks = feeds.chunk_listings([_listing(f"S{i}") for i in range(5)])
+    assert [len(c) for c in chunks] == [2, 2, 1]
+    assert [x.sku for c in chunks for x in c] == [f"S{i}" for i in range(5)]

@@ -198,19 +198,21 @@ class Ledger:
         and rewrite Amazon's `lastUpdatedDate` for no reason.
         """
         row = self._conn.execute(
-            """SELECT s.payload_hash, s.status FROM submissions s
-               WHERE s.sku = ? AND s.marketplace_id = ? AND s.mode = 'SUBMIT'
+            """SELECT s.payload_hash, s.status, s.mode, s.submission_id FROM submissions s
+               WHERE s.sku = ? AND s.marketplace_id = ? AND s.mode IN ('SUBMIT', 'DELETE')
                ORDER BY s.id DESC LIMIT 1""",
             (listing.sku, listing.marketplace_id),
         ).fetchone()
         if row is None:
             return "new"
+        if row["mode"] == "DELETE" and row["status"] == "accepted":
+            return "new"  # deleted since: the same payload must be sent again to restore it
         if row["payload_hash"] != listing.payload_hash:
             return "changed"
         if row["status"] in ("submitted", "accepted", "live"):
             return "accepted"
-        if row["status"] == "pending":
-            return "in_flight"
+        if row["status"] == "pending" and row["submission_id"]:
+            return "in_flight"  # inside a feed that has not been reconciled
         return "failed"
 
     def needs_submission(self, listing: BuiltListing) -> bool:
@@ -258,16 +260,33 @@ class Ledger:
         return [dict(r) for r in rows]
 
     def live_skus(self, marketplace_id: str | None = None) -> list[LedgerEntry]:
-        """Every SKU believed to exist on Amazon. This is the rollback list."""
-        sql = (
-            "SELECT sku, marketplace_id, payload_hash, status, built_at FROM listings "
-            "WHERE status IN ('submitted','accepted','live')"
-        )
+        """Every SKU believed to exist on Amazon. This is the rollback list.
+
+        Derived from the write history, not from ``listings.status``: that column records the
+        latest event of any kind, so a failed preview, an in-flight feed, or a rejected *update*
+        to a live listing would otherwise drop a listing that is still live from this list.
+        A SKU is live when it has an accepted SUBMIT and no later deletion.
+        """
+        sql = """
+            SELECT s.sku, s.marketplace_id, s.payload_hash, s.status, s.submitted_at AS built_at
+            FROM submissions s
+            WHERE s.mode = 'SUBMIT' AND s.status IN ('submitted','accepted','live')
+              AND s.id = (
+                SELECT MAX(a.id) FROM submissions a
+                WHERE a.sku = s.sku AND a.marketplace_id = s.marketplace_id
+                  AND a.mode = 'SUBMIT' AND a.status IN ('submitted','accepted','live')
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM submissions d
+                WHERE d.sku = s.sku AND d.marketplace_id = s.marketplace_id
+                  AND d.mode = 'DELETE' AND d.id > s.id
+              )
+        """
         params: tuple[Any, ...] = ()
         if marketplace_id:
-            sql += " AND marketplace_id = ?"
+            sql += " AND s.marketplace_id = ?"
             params = (marketplace_id,)
-        rows = self._conn.execute(sql + " ORDER BY sku", params).fetchall()
+        rows = self._conn.execute(sql + " ORDER BY s.sku", params).fetchall()
         return [LedgerEntry(**dict(r)) for r in rows]
 
     def status_summary(self) -> dict[str, int]:

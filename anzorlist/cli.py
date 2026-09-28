@@ -54,6 +54,10 @@ app.add_typer(amazon_app, name="amazon")
 console = Console()
 err_console = Console(stderr=True)
 
+# Exit codes: 0 done, 1 something failed or was blocked, 2 refused (safety gate or bad setup),
+# 3 accepted by Amazon for processing but the result is not known yet.
+EXIT_PENDING = 3
+
 
 def _configure_logging(verbose: bool) -> None:
     import logging
@@ -371,8 +375,11 @@ def _pool_and_settings() -> tuple[ClientPool, Settings]:
     return _make_pool(s), s
 
 
-def _select_built(s: Settings, skus: list[str] | None) -> list[BuiltListing]:
-    """The built listings an ``amazon`` command acts on.
+def _select_built(
+    s: Settings, skus: list[str] | None
+) -> tuple[list[BuiltListing], list[BuiltListing]]:
+    """(selected, everything built): the listings an ``amazon`` command acts on, and the full
+    build that parent/child checks consult.
 
     With explicit SKUs, those (a website SKU selects its whole variation family). Without, the
     rows currently included in the workbook, in the marketplaces those rows name - so a SKU set
@@ -412,7 +419,7 @@ def _select_built(s: Settings, skus: list[str] | None) -> list[BuiltListing]:
         missing = sorted({k.upper() for k in skus} - found)
         if missing:
             err_console.print(f"[yellow]No built payloads for:[/] {', '.join(missing)}")
-    return selected
+    return selected, loaded.listings
 
 
 def _print_local_blockers(listings: list[BuiltListing], title: str) -> None:
@@ -510,7 +517,7 @@ def amazon_validate(
     from anzorlist.channels.amazon.submit import AmazonSubmitter
 
     pool, s = _pool_and_settings()
-    listings = _select_built(s, skus)
+    listings, _ = _select_built(s, skus)
     if not listings:
         pool.close()
         err_console.print("[red]No built payloads selected.[/] Run `anzorlist build` first.")
@@ -594,13 +601,13 @@ def amazon_submit(
 
     pool, _ = _pool_and_settings()
     try:
-        listings = _select_built(s, skus)
+        listings, everything = _select_built(s, skus)
         if not listings:
             err_console.print("[red]No built payloads selected.[/] Run `anzorlist build` first.")
             raise typer.Exit(1)
 
         with Ledger(s.state_db) as ledger:
-            plan = plan_submission(listings, ledger.submission_state)
+            plan = plan_submission(listings, ledger.submission_state, family=everything)
             _print_local_blockers(plan.blocked, "Not sent: blocked by local checks")
             if plan.orphaned:
                 console.print(
@@ -615,11 +622,13 @@ def amazon_submit(
             if plan.in_flight:
                 console.print(
                     f"[yellow]{len(plan.in_flight)} listing(s) are in a feed that has not been "
-                    f"reconciled - skipping. Run `anzorlist amazon feed-status <feed-id>`.[/]"
+                    f"reconciled - skipping. Run `anzorlist amazon feed-status` to list them.[/]"
                 )
             if not plan.send:
                 if plan.blocked or plan.orphaned:
                     raise typer.Exit(1)
+                if plan.in_flight:
+                    raise typer.Exit(EXIT_PENDING)
                 console.print("[green]Everything is already up to date.[/]")
                 return
 
@@ -640,46 +649,53 @@ def amazon_submit(
             run_id = new_run_id("submit")
             ledger.start_run(run_id, "amazon submit", mode="FEED" if feed else "SUBMIT")
             submitter = AmazonSubmitter(pool, s, ledger, run_id)
-            pending_feeds: list[str] = []
-            if feed:
-                run = submitter.submit_feed(plan.send, preview_sample=preview_sample, wait=wait)
-                outcomes = run.outcomes
-                pending_feeds = [m.feed_id for m in run.pending]
-            else:
-                outcomes = submitter.submit_items(plan.send, preview_first=not skip_validate)
-            accepted = sum(1 for o in outcomes if o.accepted)
-            ledger.finish_run(
-                run_id,
-                {
-                    "sent": len(plan.send),
-                    "accepted": accepted,
-                    "failed": sum(1 for o in outcomes if not o.accepted),
-                    "pending_feeds": len(pending_feeds),
-                    "blocked": len(plan.blocked) + len(plan.orphaned),
-                },
-            )
+            try:
+                if feed:
+                    submitter.submit_feed(plan.send, preview_sample=preview_sample, wait=wait)
+                else:
+                    submitter.submit_items(plan.send, preview_first=not skip_validate)
+            finally:
+                # Whatever happened, record and show what was written before it happened.
+                outcomes = submitter.outcomes
+                pending = submitter.feed_run.pending
+                ledger.finish_run(
+                    run_id,
+                    {
+                        "sent": len(plan.send),
+                        "accepted": sum(1 for o in outcomes if o.accepted),
+                        "failed": sum(1 for o in outcomes if not o.accepted),
+                        "in_flight": sum(len(m.messages) for m in pending),
+                        "blocked": len(plan.blocked) + len(plan.orphaned),
+                    },
+                )
+                if outcomes:
+                    _print_outcomes(outcomes, f"Submission {run_id}")
+                for manifest in pending:
+                    console.print(
+                        f"[yellow]Feed {manifest.feed_id} ({len(manifest.messages)} listing(s)) "
+                        f"has no result yet.[/] Check it with "
+                        f"[cyan]anzorlist amazon feed-status {manifest.feed_id}[/]"
+                    )
     finally:
         pool.close()
 
-    if outcomes:
-        _print_outcomes(outcomes, f"Submission {run_id}")
-    for feed_id in pending_feeds:
-        console.print(
-            f"[yellow]Feed {feed_id} is still processing.[/] "
-            f"Check it with [cyan]anzorlist amazon feed-status {feed_id}[/]"
-        )
     console.print(
-        "\n[bold]Listings are created but not yet buyable.[/] Amazon processes new fine-jewelry "
-        "listings asynchronously; check [cyan]anzorlist amazon status[/] in a few minutes, then "
-        "confirm the detail pages in Seller Central before enabling inventory."
+        "\n[bold]Accepted listings are created but not yet buyable.[/] Amazon processes new "
+        "fine-jewelry listings asynchronously; check [cyan]anzorlist amazon status[/] in a few "
+        "minutes, then confirm the detail pages in Seller Central before enabling inventory."
     )
     if plan.blocked or plan.orphaned or any(not o.accepted for o in outcomes):
         raise typer.Exit(1)
+    if pending:
+        raise typer.Exit(EXIT_PENDING)
 
 
 @amazon_app.command("feed-status")
 def amazon_feed_status(
-    feed_id: Annotated[str, typer.Argument(help="A feed id printed by `amazon submit --feed`.")],
+    feed_id: Annotated[
+        str | None,
+        typer.Argument(help="A feed id from `amazon submit --feed`; omit to list open feeds."),
+    ] = None,
     wait: Annotated[bool, typer.Option("--wait", help="Poll until the feed finishes.")] = False,
 ) -> None:
     """Check a bulk feed and record its per-listing results in the ledger."""
@@ -691,6 +707,21 @@ def amazon_feed_status(
         reconcile,
     )
     from anzorlist.channels.amazon.submit import AmazonSubmitter
+
+    if feed_id is None:
+        s = get_settings()
+        open_feeds = FeedManifest.unreconciled(s.data_dir / "feeds")
+        if not open_feeds:
+            console.print("No unreconciled feeds.")
+            return
+        table = Table(title=f"{len(open_feeds)} feed(s) without a recorded result")
+        for col in ("Feed", "Mkt", "Listings", "Created"):
+            table.add_column(col)
+        for m in open_feeds:
+            table.add_row(m.feed_id, m.marketplace_code, str(len(m.messages)), m.created_at[:19])
+        console.print(table)
+        console.print("Check one with [cyan]anzorlist amazon feed-status <feed-id>[/]")
+        return
 
     pool, s = _pool_and_settings()
     try:
@@ -705,7 +736,7 @@ def amazon_feed_status(
             result = feeds.wait(feed_id) if wait else feeds.check(feed_id)
         except FeedPending as exc:
             console.print(f"[yellow]{exc}[/] - nothing to record yet.")
-            raise typer.Exit(3) from exc
+            raise typer.Exit(EXIT_PENDING) from exc
         outcomes = reconcile(result, manifest)
         if manifest.reconciled:
             console.print("[dim]Already recorded in the ledger; showing the report again.[/]")
@@ -790,19 +821,34 @@ def amazon_delete(
         console.print("Aborted.")
         raise typer.Exit(0)
 
+    from anzorlist.channels.amazon.client import SpApiError
+
     pool, _ = _pool_and_settings()
+    deleted, failed = 0, 0
     with Ledger(s.state_db) as ledger:
         run_id = new_run_id("delete")
-        ledger.start_run(run_id, "amazon delete", mode="SUBMIT")
+        ledger.start_run(run_id, "amazon delete", mode="DELETE")
         try:
             client = ListingsClient(pool.for_region(market.region), s)
             for sku in skus:
-                outcome = client.delete(sku, market, confirm=True)
+                try:
+                    outcome = client.delete(sku, market, confirm=True)
+                except SpApiError as exc:
+                    failed += 1
+                    console.print(f"  [red]not deleted[/] [cyan]{sku}[/]: {exc}")
+                    continue
                 ledger.record_submission(outcome, run_id)
-                console.print(f"  deleted [cyan]{sku}[/]")
+                if outcome.accepted:
+                    deleted += 1
+                    console.print(f"  deleted [cyan]{sku}[/]")
+                else:
+                    failed += 1
+                    console.print(f"  [red]not confirmed[/] [cyan]{sku}[/]: {outcome.summary()}")
         finally:
             pool.close()
-        ledger.finish_run(run_id, {"deleted": len(skus)})
+            ledger.finish_run(run_id, {"deleted": deleted, "failed": failed})
+    if failed:
+        raise typer.Exit(1)
 
 
 def _print_outcomes(outcomes: list[SubmissionOutcome], title: str) -> None:
