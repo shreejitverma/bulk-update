@@ -33,7 +33,13 @@ from anzorlist.config import Settings
 from anzorlist.generate.copy import ListingCopy
 from anzorlist.ingest.row import ListingRow
 from anzorlist.marketplaces import Marketplace
-from anzorlist.models.listing import BuiltListing, ListingIssue, ListingStatus, OfferTerms
+from anzorlist.models.listing import (
+    BuiltListing,
+    IssueSeverity,
+    ListingIssue,
+    ListingStatus,
+    OfferTerms,
+)
 from anzorlist.models.product import Product, ProductFamily, Variation
 from anzorlist.pricing import PriceQuote
 
@@ -618,7 +624,7 @@ class AmazonMapper:
                         code="ExtractionGap",
                         message=f"{warning.field} could not be parsed from the source page "
                         f"({warning.detail}); the attribute was omitted",
-                        severity="WARNING",  # type: ignore[arg-type]
+                        severity=IssueSeverity.WARNING,
                         attribute_names=[warning.field],
                         source="local",
                     )
@@ -641,7 +647,7 @@ class AmazonMapper:
                     message="listing relies on a GTIN exemption, but ANZOR_BRAND_REGISTERED is "
                     "false. Confirm the exemption is approved for this brand and product type in "
                     "Seller Central before submitting.",
-                    severity="WARNING",  # type: ignore[arg-type]
+                    severity=IssueSeverity.WARNING,
                     source="policy",
                 )
             )

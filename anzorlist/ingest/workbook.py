@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Any, cast
 
 import structlog
 from openpyxl import Workbook, load_workbook
@@ -107,7 +108,8 @@ def write_template(
             log.info("workbook.backup", path=str(backup), rows=len(carried))
 
     wb = Workbook()
-    wb.remove(wb.active)  # drop the default "Sheet"
+    for default_sheet in list(wb.worksheets):  # drop the default "Sheet"
+        wb.remove(default_sheet)
 
     _build_readme(wb.create_sheet(README_SHEET))
     products = wb.create_sheet(PRODUCTS_SHEET)
@@ -122,7 +124,7 @@ def write_template(
 
 
 def _build_products(
-    ws: Worksheet, *, carried_rows: list[dict[str, object]], with_examples: bool
+    ws: Worksheet, *, carried_rows: list[dict[str, Any]], with_examples: bool
 ) -> None:
     ws.freeze_panes = "B2"  # keep SKU and the header visible while scrolling
 
@@ -157,7 +159,7 @@ def _build_products(
         for example in EXAMPLE_ROWS:
             for idx, col in enumerate(COLUMNS, start=1):
                 if col.key in example:
-                    c = ws.cell(row=row_no, column=idx, value=example[col.key])  # type: ignore[arg-type]
+                    c = ws.cell(row=row_no, column=idx, value=cast(Any, example[col.key]))
                     c.font = _EXAMPLE_FONT
             row_no += 1
 
@@ -165,9 +167,9 @@ def _build_products(
     # an undifferentiated wall of 28 columns.
     for r in range(row_no, row_no + 40):
         for idx, col in enumerate(COLUMNS, start=1):
-            cell = ws.cell(row=r, column=idx)
-            cell.fill = _GROUP_FILLS.get(col.group, _GROUP_FILLS["Notes"])
-            cell.border = _BORDER
+            tint = ws.cell(row=r, column=idx)
+            tint.fill = _GROUP_FILLS.get(col.group, _GROUP_FILLS["Notes"])
+            tint.border = _BORDER
 
     ws.auto_filter.ref = f"A1:{get_column_letter(len(COLUMNS))}1"
 
@@ -401,7 +403,7 @@ def _build_results(ws: Worksheet) -> None:
 # --------------------------------------------------------------------------------------
 
 
-def _read_raw_rows(path: Path) -> list[dict[str, object]]:
+def _read_raw_rows(path: Path) -> list[dict[str, Any]]:
     """Header-keyed raw rows from the Products sheet. No validation; used by the regenerator."""
     try:
         wb = load_workbook(path, data_only=True, read_only=True)
@@ -419,7 +421,7 @@ def _read_raw_rows(path: Path) -> list[dict[str, object]]:
         wb.close()
         return []
     headers = [str(h).strip() if h is not None else "" for h in header]
-    out: list[dict[str, object]] = []
+    out: list[dict[str, Any]] = []
     for values in rows_iter:
         record = {h: v for h, v in zip(headers, values, strict=False) if h and v is not None}
         if record.get("SKU"):
@@ -480,7 +482,7 @@ def read_workbook(path: Path | str) -> ReadResult:
             continue
 
         try:
-            row = ListingRow(source_row=excel_row, **payload)  # type: ignore[arg-type]
+            row = ListingRow(source_row=excel_row, **payload)
         except ValidationError as exc:
             for err in exc.errors():
                 key = str(err["loc"][0]) if err["loc"] else "?"

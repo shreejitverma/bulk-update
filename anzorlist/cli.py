@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import structlog
 import typer
@@ -33,6 +33,9 @@ from anzorlist.marketplaces import group_by_region, resolve, resolve_all
 from anzorlist.models.listing import BuiltListing
 from anzorlist.pipeline import BuildOptions, BuildPipeline, BuildReport
 from anzorlist.store.db import Ledger
+
+if TYPE_CHECKING:
+    from anzorlist.channels.amazon.client import ClientPool
 
 app = typer.Typer(
     name="anzorlist",
@@ -342,7 +345,7 @@ def _print_build_report(report: BuildReport, s: Settings) -> None:
 # =====================================================================  amazon
 
 
-def _pool_and_settings():  # type: ignore[no-untyped-def]
+def _pool_and_settings() -> tuple[ClientPool, Settings]:
     from anzorlist.channels.amazon.client import ClientPool
 
     s = get_settings()

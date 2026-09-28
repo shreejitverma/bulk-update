@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 import structlog
 from pydantic import BaseModel, Field
@@ -141,7 +142,7 @@ class CopyGenerator:
         self._workhorse = settings.copy_model
         self._escalation = settings.copy_model_escalation
 
-    def _anthropic(self):  # type: ignore[no-untyped-def]
+    def _anthropic(self) -> Any:
         if self._client is None:
             import anthropic
 
@@ -295,7 +296,7 @@ traced to ITEM DETAILS, the correct fix is to remove that claim entirely, not to
     ) -> tuple[ListingCopy, tuple[int, int, int]]:
         """One Messages API call. Returns the parsed copy and (input, output, cache_read) tokens."""
         client = self._anthropic()
-        response = client.messages.parse(  # type: ignore[union-attr]
+        response = client.messages.parse(
             model=model,
             max_tokens=8000,
             system=[

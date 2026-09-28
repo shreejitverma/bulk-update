@@ -31,6 +31,7 @@ import io
 import mimetypes
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 import httpx
 import structlog
@@ -243,13 +244,10 @@ class MediaPipeline:
             rgb = img.convert("RGB")
             w, h = rgb.size
             step = max(1, min(w, h) // 100)
-            border: list[tuple[int, int, int]] = []
-            for x in range(0, w, step):
-                border.append(rgb.getpixel((x, 0)))
-                border.append(rgb.getpixel((x, h - 1)))
-            for y in range(0, h, step):
-                border.append(rgb.getpixel((0, y)))
-                border.append(rgb.getpixel((w - 1, y)))
+            coords = [(x, 0) for x in range(0, w, step)] + [(x, h - 1) for x in range(0, w, step)]
+            coords += [(0, y) for y in range(0, h, step)] + [(w - 1, y) for y in range(0, h, step)]
+            # An RGB image always yields an (r, g, b) tuple per pixel.
+            border = [cast(tuple[int, int, int], rgb.getpixel(xy)) for xy in coords]
             if not border:
                 return
             white = sum(1 for px in border if all(c >= WHITE_THRESHOLD for c in px))

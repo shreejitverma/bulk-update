@@ -32,6 +32,8 @@ dev = [
     "ruff>=0.5",
     "black>=24.4",
     "types-beautifulsoup4",
+    "types-openpyxl>=3.1.5.20260827",
+    "types-jsonschema>=4.26.0.20260518",
 ]
 
 [build-system]
@@ -59,6 +61,11 @@ line-length = 100
 python_version = "3.11"
 strict = true
 plugins = ["pydantic.mypy"]
+
+# boto3 ships no type information; the R2 uploader is its only caller.
+[[tool.mypy.overrides]]
+module = ["boto3", "botocore.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -231,7 +231,7 @@ class ListingsClient:
         which is how the pipeline distinguishes "create" from "update"."""
         path = f"{LISTINGS_BASE}/{self._client.seller_id}/{_encode_sku(sku)}"
         try:
-            return self._client.get(
+            payload = self._client.get(
                 path,
                 operation="getListingsItem",
                 params={
@@ -244,6 +244,7 @@ class ListingsClient:
             if exc.status == 404:
                 return None
             raise
+        return payload if isinstance(payload, dict) else None
 
     def exists(self, sku: str, marketplace: Marketplace) -> bool:
         return self.get(sku, marketplace, included_data=("summaries",)) is not None

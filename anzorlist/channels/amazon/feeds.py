@@ -204,9 +204,12 @@ class FeedsClient:
         if compression.upper() == "GZIP":
             content = gzip.GzipFile(fileobj=io.BytesIO(content)).read()
         try:
-            return json.loads(content.decode("utf-8"))
+            report = json.loads(content.decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as exc:
             raise FeedError(f"could not parse feed report {document_id}: {exc}") from exc
+        if not isinstance(report, dict):
+            raise FeedError(f"feed report {document_id} is not a JSON object")
+        return report
 
 
 def build_feed_document(listings: list[BuiltListing], seller_id: str) -> dict[str, Any]:
