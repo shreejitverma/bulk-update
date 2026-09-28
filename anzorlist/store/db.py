@@ -20,13 +20,14 @@ of a SKU is the full sequence of its rows.
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 
@@ -35,6 +36,8 @@ from anzorlist.models.listing import BuiltListing, SubmissionOutcome
 log = structlog.get_logger(__name__)
 
 SCHEMA_VERSION = 1
+
+SubmissionState = Literal["new", "changed", "accepted", "in_flight", "failed"]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -168,9 +171,15 @@ class Ledger:
                     payload_json, issues_json, status, built_at)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    listing.sku, listing.marketplace_id, listing.source_sku, listing.parent_sku,
-                    listing.product_type, int(listing.is_parent), listing.payload_hash,
-                    listing.content_hash, listing.source_url,
+                    listing.sku,
+                    listing.marketplace_id,
+                    listing.source_sku,
+                    listing.parent_sku,
+                    listing.product_type,
+                    int(listing.is_parent),
+                    listing.payload_hash,
+                    listing.content_hash,
+                    listing.source_url,
                     str(listing.offer.price) if listing.offer else None,
                     listing.offer.currency if listing.offer else None,
                     listing.offer.quantity if listing.offer else None,
@@ -181,24 +190,35 @@ class Ledger:
                 ),
             )
 
-    def needs_submission(self, listing: BuiltListing) -> bool:
-        """True when this exact payload has not already been accepted for this marketplace.
+    def submission_state(self, listing: BuiltListing) -> SubmissionState:
+        """Where this exact payload stands with Amazon, from the last live write for its SKU.
 
         The comparison is on the payload hash, not on a timestamp: a rebuild that produces
         byte-identical attributes is genuinely a no-op, and re-sending it would consume quota
         and rewrite Amazon's `lastUpdatedDate` for no reason.
         """
         row = self._conn.execute(
-            """SELECT s.payload_hash, s.status FROM submissions s
-               WHERE s.sku = ? AND s.marketplace_id = ? AND s.mode = 'SUBMIT'
+            """SELECT s.payload_hash, s.status, s.mode, s.submission_id FROM submissions s
+               WHERE s.sku = ? AND s.marketplace_id = ?
+                 AND (s.mode = 'SUBMIT' OR (s.mode = 'DELETE' AND s.status = 'accepted'))
                ORDER BY s.id DESC LIMIT 1""",
             (listing.sku, listing.marketplace_id),
         ).fetchone()
         if row is None:
-            return True
+            return "new"
+        if row["mode"] == "DELETE":
+            return "new"  # deleted since: the same payload must be sent again to restore it
         if row["payload_hash"] != listing.payload_hash:
-            return True
-        return row["status"] not in ("submitted", "accepted", "live")
+            return "changed"
+        if row["status"] in ("submitted", "accepted", "live"):
+            return "accepted"
+        if row["status"] == "pending" and row["submission_id"]:
+            return "in_flight"  # inside a feed that has not been reconciled
+        return "failed"
+
+    def needs_submission(self, listing: BuiltListing) -> bool:
+        """True when this exact payload is neither accepted nor already in flight."""
+        return self.submission_state(listing) in ("new", "changed", "failed")
 
     def get_listing(self, sku: str, marketplace_id: str) -> dict[str, Any] | None:
         row = self._conn.execute(
@@ -216,8 +236,13 @@ class Ledger:
                     payload_hash, issues_json, submitted_at, run_id)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    outcome.sku, outcome.marketplace_id, outcome.mode, outcome.status.value,
-                    outcome.submission_id, outcome.request_id, outcome.http_status,
+                    outcome.sku,
+                    outcome.marketplace_id,
+                    outcome.mode,
+                    outcome.status.value,
+                    outcome.submission_id,
+                    outcome.request_id,
+                    outcome.http_status,
                     outcome.payload_hash,
                     json.dumps([i.model_dump(mode="json") for i in outcome.issues]),
                     (outcome.submitted_at or datetime.now(timezone.utc)).isoformat(),
@@ -235,16 +260,45 @@ class Ledger:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    _LIVE_SQL = """
+        SELECT s.sku, s.marketplace_id, s.payload_hash, s.status, s.submitted_at AS built_at
+        FROM submissions s
+        WHERE s.mode = 'SUBMIT' AND s.status IN ('submitted','accepted','live')
+          AND s.id = (
+            SELECT MAX(a.id) FROM submissions a
+            WHERE a.sku = s.sku AND a.marketplace_id = s.marketplace_id
+              AND a.mode = 'SUBMIT' AND a.status IN ('submitted','accepted','live')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM submissions d
+            WHERE d.sku = s.sku AND d.marketplace_id = s.marketplace_id
+              AND d.mode = 'DELETE' AND d.status = 'accepted' AND d.id > s.id
+          )
+    """
+
     def live_skus(self, marketplace_id: str | None = None) -> list[LedgerEntry]:
-        """Every SKU believed to exist on Amazon. This is the rollback list."""
-        sql = ("SELECT sku, marketplace_id, payload_hash, status, built_at FROM listings "
-               "WHERE status IN ('submitted','accepted','live')")
+        """Every SKU believed to exist on Amazon. This is the rollback list.
+
+        Derived from the write history, not from ``listings.status``: that column records the
+        latest event of any kind, so a failed preview, an in-flight feed, or a rejected *update*
+        to a live listing would otherwise drop a listing that is still live from this list.
+        A SKU is live when it has an accepted SUBMIT and no later accepted deletion.
+        """
+        sql = self._LIVE_SQL
         params: tuple[Any, ...] = ()
         if marketplace_id:
-            sql += " AND marketplace_id = ?"
+            sql += " AND s.marketplace_id = ?"
             params = (marketplace_id,)
-        rows = self._conn.execute(sql + " ORDER BY sku", params).fetchall()
+        rows = self._conn.execute(sql + " ORDER BY s.sku", params).fetchall()
         return [LedgerEntry(**dict(r)) for r in rows]
+
+    def is_live(self, sku: str, marketplace_id: str) -> bool:
+        """Whether this SKU exists on Amazon, by the same rule as :meth:`live_skus`, whatever
+        payload was last accepted for it."""
+        row = self._conn.execute(
+            self._LIVE_SQL + " AND s.sku = ? AND s.marketplace_id = ?", (sku, marketplace_id)
+        ).fetchone()
+        return row is not None
 
     def status_summary(self) -> dict[str, int]:
         rows = self._conn.execute(
@@ -270,3 +324,9 @@ class Ledger:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def new_run_id(command: str) -> str:
+    """A unique, sortable run id. Reusing one would overwrite an earlier run's audit record."""
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return f"{command}-{stamp}-{secrets.token_hex(3)}"

@@ -19,6 +19,8 @@ data/raw/
 data/media/
 *.sqlite
 *.sqlite3
+*.sqlite-wal
+*.sqlite-shm
 
 # Keep committed fixtures under tests/fixtures/
 
@@ -26,4 +28,8 @@ data/media/
 data/build/
 data/schemas/
 data/parsed/
+data/feeds/
+
+# Operator product photos (large binaries, not source)
+images/
 *.backup.xlsx

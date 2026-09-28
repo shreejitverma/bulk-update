@@ -126,25 +126,30 @@ class PreflightClient:
             "marketplaceIds": marketplace.marketplace_id,
             "conditionType": condition_type,
         }
-        payload = self._client.get(RESTRICTIONS_PATH, operation="getListingsRestrictions",
-                                   params=params)
+        payload = self._client.get(
+            RESTRICTIONS_PATH, operation="getListingsRestrictions", params=params
+        )
         out: list[Restriction] = []
         for entry in (payload or {}).get("restrictions", []) or []:
             reasons_raw = entry.get("reasons", []) or []
-            out.append(Restriction(
-                marketplace_id=str(entry.get("marketplaceId", marketplace.marketplace_id)),
-                condition_type=str(entry.get("conditionType", condition_type)),
-                reasons=[str(r.get("message", "")) for r in reasons_raw if isinstance(r, dict)],
-                approval_urls=[
-                    str(link.get("resource", ""))
-                    for r in reasons_raw if isinstance(r, dict)
-                    for link in (r.get("links", []) or [])
-                    if isinstance(link, dict) and link.get("resource")
-                ],
-            ))
+            out.append(
+                Restriction(
+                    marketplace_id=str(entry.get("marketplaceId", marketplace.marketplace_id)),
+                    condition_type=str(entry.get("conditionType", condition_type)),
+                    reasons=[str(r.get("message", "")) for r in reasons_raw if isinstance(r, dict)],
+                    approval_urls=[
+                        str(link.get("resource", ""))
+                        for r in reasons_raw
+                        if isinstance(r, dict)
+                        for link in (r.get("links", []) or [])
+                        if isinstance(link, dict) and link.get("resource")
+                    ],
+                )
+            )
         if out:
-            log.warning("preflight.restricted", marketplace=marketplace.code, asin=asin,
-                        count=len(out))
+            log.warning(
+                "preflight.restricted", marketplace=marketplace.code, asin=asin, count=len(out)
+            )
         return out
 
     def run(

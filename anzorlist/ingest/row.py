@@ -132,8 +132,9 @@ class ListingRow(BaseModel):
             raise ValueError("must be zero or greater")
         return v
 
-    @field_validator("price_override_usd", "list_price_usd", "total_gem_weight_ct",
-                     "total_metal_weight_g")
+    @field_validator(
+        "price_override_usd", "list_price_usd", "total_gem_weight_ct", "total_metal_weight_g"
+    )
     @classmethod
     def _positive_decimal(cls, v: Decimal | None) -> Decimal | None:
         if v is not None and v <= 0:
@@ -167,8 +168,11 @@ class ListingRow(BaseModel):
     @property
     def bullets(self) -> list[str]:
         """Non-empty bullet overrides, in order. Fewer than 5 is fine; gaps are closed up."""
-        return [b for b in (self.bullet_1, self.bullet_2, self.bullet_3,
-                            self.bullet_4, self.bullet_5) if b]
+        return [
+            b
+            for b in (self.bullet_1, self.bullet_2, self.bullet_3, self.bullet_4, self.bullet_5)
+            if b
+        ]
 
     @property
     def uses_gtin_exemption(self) -> bool:

@@ -25,13 +25,12 @@ the credentials are wrong, every remaining SKU will fail the same way and failin
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
 
 import structlog
 
+from anzorlist.channels.amazon.artifacts import clear_family, write_listings
 from anzorlist.channels.amazon.definitions import (
     DefinitionsClient,
     SchemaUnavailable,
@@ -57,11 +56,11 @@ log = structlog.get_logger(__name__)
 class BuildOptions:
     """What the operator asked for. Defaults are the safe, offline-capable path."""
 
-    use_copy: bool = True          # call Claude; False uses spec-sheet fallback copy
-    use_media: bool = True         # download and host images
-    upload_media: bool = True      # push to R2 (False = validate only)
-    schema_check: bool = True      # validate against Amazon's cached JSON Schema
-    force_refetch: bool = False    # ignore the raw HTML cache
+    use_copy: bool = True  # call Claude; False uses spec-sheet fallback copy
+    use_media: bool = True  # download and host images
+    upload_media: bool = True  # push to R2 (False = validate only)
+    schema_check: bool = True  # validate against Amazon's cached JSON Schema
+    force_refetch: bool = False  # ignore the raw HTML cache
     fx_rates: dict[str, str] = field(default_factory=dict)  # marketplace code -> USD rate
     charm_pricing: bool = False
 
@@ -80,8 +79,10 @@ class SkuBuild:
 
     @property
     def ok(self) -> bool:
-        return bool(self.listings) and not self.errors and all(
-            listing.submittable for listing in self.listings
+        return (
+            bool(self.listings)
+            and not self.errors
+            and all(listing.submittable for listing in self.listings)
         )
 
 
@@ -136,6 +137,11 @@ class BuildPipeline:
     # ------------------------------------------------------------------ per-row
 
     def build_row(self, row: ListingRow, options: BuildOptions) -> SkuBuild:
+        build = self._build_row(row, options)
+        self._write_artifacts(row, build)
+        return build
+
+    def _build_row(self, row: ListingRow, options: BuildOptions) -> SkuBuild:
         build = SkuBuild(sku=row.sku)
 
         # --- 2. extract ---
@@ -156,14 +162,16 @@ class BuildPipeline:
 
         # --- 3. media ---
         image_urls: list[str] = []
+        image_problem = "image processing was skipped (--no-media)"
         if options.use_media:
             media = self.media.process(product, upload=options.upload_media)
             image_urls = media.hosted_urls
             build.hosted_images = len(image_urls)
-            if not image_urls and media.images:
-                # Images exist but could not be hosted. Not fatal at build time — the listing is
-                # still worth producing and reviewing — but it is flagged on every listing below.
-                log.warning("pipeline.no_hosted_images", sku=row.sku)
+            image_problem = media.diagnosis()
+            if not image_urls:
+                # Not fatal at build time - the listing is still worth producing and reviewing -
+                # but every listing below carries a blocking NoMainImage issue saying why.
+                log.warning("pipeline.no_hosted_images", sku=row.sku, reason=image_problem)
 
         # --- 4. copy ---
         copy_obj, escalated, model_used = self._generate_copy(product, options)
@@ -179,29 +187,37 @@ class BuildPipeline:
                     marketplace,
                     fee_fraction=self.settings.markup_amazon,
                     override=row.price_override_usd,
-                    list_price=row.list_price_usd or (
-                        product.pricing.list_price.amount if product.pricing.list_price else None
-                    ),
+                    list_price=row.list_price_usd
+                    or (product.pricing.list_price.amount if product.pricing.list_price else None),
                     floor=self.settings.price_floor,
                     fx_rate=self._fx_rate(marketplace, options),
                     charm=options.charm_pricing,
                 )
             except PricingError as exc:
                 build.errors.append(f"{marketplace.code}: {exc}")
-                log.warning("pipeline.pricing_failed", sku=row.sku,
-                            marketplace=marketplace.code, error=str(exc))
+                log.warning(
+                    "pipeline.pricing_failed",
+                    sku=row.sku,
+                    marketplace=marketplace.code,
+                    error=str(exc),
+                )
                 continue
 
             listings = self.mapper.build(
-                product=product, row=row, marketplace=marketplace,
-                copy=copy_obj, quote=quote, image_urls=image_urls,
+                product=product,
+                row=row,
+                marketplace=marketplace,
+                copy=copy_obj,
+                quote=quote,
+                image_urls=image_urls,
             )
+            for listing in listings:
+                _explain_missing_image(listing, image_problem)
             if options.schema_check:
                 for listing in listings:
                     self._schema_check(listing, marketplace)
+            _block_empty_parents(listings)
 
-            for listing in listings:
-                self._persist(listing)
             build.listings.extend(listings)
 
         return build
@@ -249,10 +265,16 @@ class BuildPipeline:
         if result.ok and result.copy is not None:
             return result.copy, result.escalated, result.model_used
 
-        log.warning("pipeline.copy_failed_using_fallback", sku=product.sku,
-                    errors=[e.code for e in result.report.errors])
-        return (fallback_copy(product, self.settings.brand_name), result.escalated,
-                f"fallback (validation failed after {result.attempts} attempts)")
+        log.warning(
+            "pipeline.copy_failed_using_fallback",
+            sku=product.sku,
+            errors=[e.code for e in result.report.errors],
+        )
+        return (
+            fallback_copy(product, self.settings.brand_name),
+            result.escalated,
+            f"fallback (validation failed after {result.attempts} attempts)",
+        )
 
     def _schema_check(self, listing: BuiltListing, marketplace: Marketplace) -> None:
         """Validate the payload against Amazon's own schema, locally.
@@ -263,56 +285,54 @@ class BuildPipeline:
         try:
             schema = self.definitions.get_schema(listing.product_type, marketplace)
         except SchemaUnavailable as exc:
-            listing.issues.append(ListingIssue(
-                code="SchemaNotCached",
-                message=str(exc).split("\n")[0]
-                + " — the payload was built but not verified against Amazon's rules.",
-                severity=IssueSeverity.WARNING,
-                source="local",
-            ))
+            listing.issues.append(
+                ListingIssue(
+                    code="SchemaNotCached",
+                    message=str(exc).split("\n")[0]
+                    + " — the payload was built but not verified against Amazon's rules.",
+                    severity=IssueSeverity.WARNING,
+                    source="local",
+                )
+            )
             return
         except Exception as exc:  # noqa: BLE001
-            listing.issues.append(ListingIssue(
-                code="SchemaCheckFailed",
-                message=f"could not run the schema check: {exc}",
-                severity=IssueSeverity.WARNING,
-                source="local",
-            ))
+            listing.issues.append(
+                ListingIssue(
+                    code="SchemaCheckFailed",
+                    message=f"could not run the schema check: {exc}",
+                    severity=IssueSeverity.WARNING,
+                    source="local",
+                )
+            )
             return
 
         issues = validate_attributes(listing.attributes, schema)
         for issue in issues:
-            listing.issues.append(ListingIssue(
-                code="SchemaViolation",
-                message=issue.message,
-                severity=(IssueSeverity.ERROR if issue.severity == "ERROR"
-                          else IssueSeverity.INFO),
-                attribute_names=[issue.attribute] if issue.attribute else [],
-                source="schema",
-            ))
+            listing.issues.append(
+                ListingIssue(
+                    code="SchemaViolation",
+                    message=issue.message,
+                    severity=(
+                        IssueSeverity.ERROR if issue.severity == "ERROR" else IssueSeverity.INFO
+                    ),
+                    attribute_names=[issue.attribute] if issue.attribute else [],
+                    source="schema",
+                )
+            )
         listing.status = (
-            ListingStatus.SCHEMA_FAILED if any(i.blocking for i in listing.issues)
+            ListingStatus.SCHEMA_FAILED
+            if any(i.blocking for i in listing.issues)
             else ListingStatus.SCHEMA_OK
         )
 
-    def _persist(self, listing: BuiltListing) -> Path:
-        """Write the exact payload to disk. This file is the artifact under review."""
-        out_dir = self.settings.build_dir / listing.marketplace_code
-        out_dir.mkdir(parents=True, exist_ok=True)
-        path = out_dir / f"{listing.sku}.json"
-        path.write_text(json.dumps({
-            "sku": listing.sku,
-            "marketplace": listing.marketplace_code,
-            "productType": listing.product_type,
-            "requirements": listing.requirements,
-            "isParent": listing.is_parent,
-            "parentSku": listing.parent_sku,
-            "payloadHash": listing.payload_hash,
-            "sourceUrl": listing.source_url,
-            "issues": [i.model_dump(mode="json") for i in listing.issues],
-            "body": listing.body(),
-        }, indent=2, ensure_ascii=False))
-        return path
+    def _write_artifacts(self, row: ListingRow, build: SkuBuild) -> None:
+        """Replace this SKU's artifacts. The files on disk always equal the latest build.
+
+        The SKU is cleared in every marketplace first - including one that failed this time and one
+        the row no longer names - so a payload from an earlier build can never be submitted.
+        """
+        clear_family(self.settings.build_dir, row.sku)
+        write_listings(self.settings.build_dir, build.listings)
 
     # ------------------------------------------------------------------ helpers
 
@@ -335,6 +355,31 @@ class BuildPipeline:
         if self._own_site:
             self.site.close()
         self.media.close()
+
+
+def _block_empty_parents(listings: list[BuiltListing]) -> None:
+    """A parent whose every child is blocked would be an empty detail page; block it too."""
+    for parent in (x for x in listings if x.is_parent):
+        children = [x for x in listings if x.parent_sku == parent.sku]
+        if children and not any(c.submittable for c in children):
+            reason = children[0].blocking_issues[0]
+            parent.issues.append(
+                ListingIssue(
+                    code="FamilyBlocked",
+                    message=f"every child of this family is blocked, so the parent is withheld "
+                    f"too (first child's problem: {reason.code}: {reason.message})",
+                    source="local",
+                )
+            )
+
+
+def _explain_missing_image(listing: BuiltListing, reason: str) -> None:
+    """Replace the mapper's generic NoMainImage message with the actual cause and fix."""
+    if not reason:
+        return
+    for issue in listing.issues:
+        if issue.code == "NoMainImage":
+            issue.message = f"no main image: {reason}"
 
 
 def _run_id() -> str:

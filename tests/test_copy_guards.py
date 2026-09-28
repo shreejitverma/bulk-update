@@ -33,8 +33,10 @@ class TestSanitizer:
         assert kind in result.removed, f"{kind} was not detected in {text!r}"
 
     def test_clean_text_survives_intact(self):
-        text = ("This handcrafted band features a channel setting with milgrain detail "
-                "along both edges of the shank.")
+        text = (
+            "This handcrafted band features a channel setting with milgrain detail "
+            "along both edges of the shank."
+        )
         result = sanitize(text)
         assert result.removed_count == 0
         assert "milgrain" in result.text
@@ -155,7 +157,9 @@ class TestFtcRules:
         report = validate_copy(
             product=product,
             title="Natural Sapphire Ring",
-            bullets=[], description="", search_terms="",
+            bullets=[],
+            description="",
+            search_terms="",
         )
         assert not report.ok
         assert any(i.code == "FtcOriginUpgrade" for i in report.errors)
@@ -165,7 +169,9 @@ class TestFtcRules:
         report = validate_copy(
             product=product,
             title="Genuine Diamond Ring",
-            bullets=[], description="", search_terms="",
+            bullets=[],
+            description="",
+            search_terms="",
         )
         assert any(i.code == "FtcOriginUpgrade" for i in report.errors)
 
@@ -179,15 +185,16 @@ class TestFtcRules:
             family=ProductFamily.RING,
             source_url="https://example.test/p",
             marketing_title_raw="Test Ring",
-            specs=[SpecRow(label="Metal", value="14k gold plated brass",
-                           provenance_key="k")],
+            specs=[SpecRow(label="Metal", value="14k gold plated brass", provenance_key="k")],
             content_hash="0" * 64,
             fetched_at=datetime.now(timezone.utc),
         )
         report = validate_copy(
             product=product,
             title="Solid Gold Ring",  # drops "plated" — the deceptive claim
-            bullets=[], description="", search_terms="",
+            bullets=[],
+            description="",
+            search_terms="",
         )
         assert not report.ok
         assert any(i.code == "FtcPlatingOmitted" for i in report.errors)
@@ -202,15 +209,16 @@ class TestFtcRules:
             family=ProductFamily.RING,
             source_url="https://example.test/p",
             marketing_title_raw="Test Ring",
-            specs=[SpecRow(label="Metal", value="14k gold plated brass",
-                           provenance_key="k")],
+            specs=[SpecRow(label="Metal", value="14k gold plated brass", provenance_key="k")],
             content_hash="0" * 64,
             fetched_at=datetime.now(timezone.utc),
         )
         report = validate_copy(
             product=product,
             title="14k Gold Plated Band Ring",
-            bullets=[], description="", search_terms="",
+            bullets=[],
+            description="",
+            search_terms="",
         )
         assert not any(i.code == "FtcPlatingOmitted" for i in report.errors)
 
@@ -283,12 +291,18 @@ class TestRealMultiStoneFixture:
         path = Path(__file__).parent / "fixtures" / "R1279.html"
         raw = path.read_bytes()
         html, encoding = SiteClient._decode(raw)
-        return parse_product(FetchResult(
-            sku="R1279",
-            url="https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=R1279",
-            html=html, raw_bytes=raw, content_hash=hashlib.sha256(raw).hexdigest(),
-            encoding=encoding, from_cache=True, cache_path=path,
-        ))
+        return parse_product(
+            FetchResult(
+                sku="R1279",
+                url="https://www.anzorjewelrycorp.com/Scripts/prodview.asp?SKU=R1279",
+                html=html,
+                raw_bytes=raw,
+                content_hash=hashlib.sha256(raw).hexdigest(),
+                encoding=encoding,
+                from_cache=True,
+                cache_path=path,
+            )
+        )
 
     def test_source_row_really_is_two_stones(self):
         """Guards the premise: if the page changes, the rest of this class is meaningless."""

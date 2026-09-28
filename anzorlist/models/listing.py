@@ -10,6 +10,8 @@ A :class:`SubmissionOutcome` is what came back. Both are persisted in the ledger
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
@@ -125,6 +127,14 @@ class BuiltListing(BaseModel):
             "attributes": self.attributes,
         }
 
+    def compute_payload_hash(self) -> str:
+        """Hash of exactly what is sent. Unchanged hash means there is nothing to resubmit.
+
+        The product type is part of the body, so changing it alone is a real change.
+        """
+        canonical = json.dumps(self.body(), sort_keys=True, default=str, ensure_ascii=False)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
 
 class SubmissionOutcome(BaseModel):
     """What Amazon said. Recorded whether it succeeded or not."""
@@ -132,7 +142,7 @@ class SubmissionOutcome(BaseModel):
     sku: str
     marketplace_id: str
     marketplace_code: str
-    mode: Literal["VALIDATION_PREVIEW", "SUBMIT"]
+    mode: Literal["VALIDATION_PREVIEW", "SUBMIT", "DELETE"]
     status: ListingStatus
     submission_id: str | None = None
     request_id: str | None = None
@@ -143,8 +153,12 @@ class SubmissionOutcome(BaseModel):
 
     @property
     def accepted(self) -> bool:
-        return self.status in (ListingStatus.ACCEPTED, ListingStatus.VALIDATED,
-                               ListingStatus.SUBMITTED, ListingStatus.LIVE)
+        return self.status in (
+            ListingStatus.ACCEPTED,
+            ListingStatus.VALIDATED,
+            ListingStatus.SUBMITTED,
+            ListingStatus.LIVE,
+        )
 
     def summary(self) -> str:
         errs = [i for i in self.issues if i.blocking]

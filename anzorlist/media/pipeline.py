@@ -29,15 +29,17 @@ from __future__ import annotations
 import hashlib
 import io
 import mimetypes
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 import httpx
 import structlog
 from PIL import Image, UnidentifiedImageError
 
 from anzorlist.config import Settings
-from anzorlist.models.product import MediaAsset, Product
+from anzorlist.models.product import Product
 
 log = structlog.get_logger(__name__)
 
@@ -46,6 +48,7 @@ RECOMMENDED_LONGEST_SIDE = 1600
 MAX_LONGEST_SIDE = 10000
 MAX_BYTES = 10 * 1024 * 1024
 ACCEPTED_FORMATS = {"JPEG", "PNG", "TIFF", "GIF"}
+LOCAL_SUFFIXES = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".gif"}
 WHITE_THRESHOLD = 246  # per-channel; Amazon's own guidance is RGB 255,255,255 "pure white"
 WHITE_BORDER_TOLERANCE = 0.90  # fraction of border pixels that must read as white
 
@@ -79,6 +82,9 @@ class ProcessedImage:
 class MediaResult:
     sku: str
     images: list[ProcessedImage] = field(default_factory=list)
+    source: str = "site"  # "site" or "local" (operator-supplied override directory)
+    local_dir: Path | None = None
+    hosting_note: str = ""  # why images were checked but not hosted, if they were not
 
     @property
     def main(self) -> ProcessedImage | None:
@@ -86,16 +92,37 @@ class MediaResult:
 
     @property
     def hosted_urls(self) -> list[str]:
-        """Main first, then alternates — the order Amazon assigns to image slots."""
-        main = [i.public_url for i in self.images if i.role == "main" and i.public_url]
-        alts = [i.public_url for i in self.images if i.role != "main" and i.public_url]
-        return [u for u in main + alts if u]
+        """Main first, then alternates - the order Amazon assigns to image slots.
 
-    @property
-    def blocking_errors(self) -> list[str]:
-        if self.main is None:
-            return ["no usable main image"]
-        return list(self.main.errors)
+        Empty unless the main image itself is hosted. An alternate is never promoted to main: it
+        has not been through the white-background check, and slot one is what Amazon polices.
+        """
+        main = next((i.public_url for i in self.images if i.role == "main" and i.public_url), None)
+        if main is None:
+            return []
+        alts = [i.public_url for i in self.images if i.role != "main" and i.public_url]
+        return [main, *alts]
+
+    def diagnosis(self) -> str:
+        """Why there is no hosted main image, and what the operator does about it."""
+        override = (
+            f"Put high-resolution photos in {self.local_dir}/ - the first file by name becomes "
+            f"the main image, and they replace the website's images."
+            if self.local_dir is not None
+            else ""
+        )
+        if not self.images:
+            where = "the product page has no images" if self.source == "site" else "no images"
+            return f"{where}. {override}".strip()
+        main = next((i for i in self.images if i.role == "main"), None)
+        if main is None or not main.ok:
+            reason = main.errors[0] if main is not None and main.errors else "missing"
+            origin = "website" if self.source == "site" else "local"
+            fix = override if self.source == "site" else "Replace the first file in that folder."
+            return f"the {origin} main image is unusable: {reason}. {fix}".strip()
+        if main.public_url is None:
+            return f"the main image passed every check but was not hosted: {self.hosting_note}"
+        return ""
 
 
 class MediaPipeline:
@@ -111,27 +138,55 @@ class MediaPipeline:
         self.settings = settings
         self._owns_http = http is None
         self._http = http or httpx.Client(
-            timeout=60.0, follow_redirects=True,
+            timeout=60.0,
+            follow_redirects=True,
             headers={"User-Agent": settings.user_agent},
         )
         self._uploader = uploader
 
     # -- orchestration --
 
+    def local_override_dir(self, sku: str) -> Path:
+        return self.settings.images_dir / sku
+
+    def local_overrides(self, sku: str) -> list[Path]:
+        """Operator-supplied photos for this SKU, in name order. Empty when there are none."""
+        folder = self.local_override_dir(sku)
+        if not folder.is_dir():
+            return []
+        return sorted(
+            (p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in LOCAL_SUFFIXES),
+            key=lambda p: p.name.lower(),
+        )
+
     def process(self, product: Product, *, upload: bool = True) -> MediaResult:
-        result = MediaResult(sku=product.sku)
-        images = [m for m in product.media if m.kind == "image"]
-        if not images:
+        result = MediaResult(sku=product.sku, local_dir=self.local_override_dir(product.sku))
+        local = self.local_overrides(product.sku)
+        if local:
+            # The operator's own photos win outright. Mixing them with the site's would put
+            # low-resolution alternates next to a high-resolution main image.
+            result.source = "local"
+            candidates = [
+                ("main" if i == 0 else "alternate", path.resolve().as_uri(), path.read_bytes)
+                for i, path in enumerate(local)
+            ]
+        else:
+            candidates = [
+                (m.role, m.source_url, self._downloader(m.source_url))
+                for m in product.media
+                if m.kind == "image"
+            ]
+        if not candidates:
             log.warning("media.none", sku=product.sku)
             return result
 
         seen_hashes: set[str] = set()
-        for asset in images:
-            processed = self._fetch_and_check(product.sku, asset)
+        for role, source, read in candidates:
+            processed = self._read_and_check(product.sku, role, source, read)
             # The legacy store serves the same file as both the main image and the first
             # thumbnail. Uploading it twice would waste a slot Amazon caps at nine.
             if processed.content_hash and processed.content_hash in seen_hashes:
-                log.debug("media.duplicate_skipped", sku=product.sku, url=asset.source_url)
+                log.debug("media.duplicate_skipped", sku=product.sku, source=source)
                 continue
             if processed.content_hash:
                 seen_hashes.add(processed.content_hash)
@@ -142,30 +197,48 @@ class MediaPipeline:
             if uploader is not None:
                 for image in result.images:
                     if image.ok and image.local_path is not None:
-                        image.public_url = uploader.upload(image)
+                        try:
+                            image.public_url = uploader.upload(image)
+                        except Exception as exc:  # noqa: BLE001 - one SKU must not stop the run
+                            image.errors.append(f"upload to image hosting failed: {exc}")
+                            result.hosting_note = f"upload to image hosting failed: {exc}"
+                            log.error("media.upload_failed", sku=product.sku, error=str(exc))
             else:
-                for image in result.images:
-                    image.warnings.append(
-                        "image hosting is not configured (R2_* settings); no public URL was "
-                        "produced, so this listing cannot be submitted with images"
-                    )
+                result.hosting_note = (
+                    "image hosting is not configured (set the R2_* values in .env; see "
+                    "docs/RUNBOOK.md step 5)"
+                )
+        else:
+            result.hosting_note = "hosting was skipped (--no-upload)"
 
-        log.info("media.processed", sku=product.sku, images=len(result.images),
-                 usable=sum(1 for i in result.images if i.ok),
-                 hosted=sum(1 for i in result.images if i.public_url))
+        log.info(
+            "media.processed",
+            sku=product.sku,
+            images=len(result.images),
+            usable=sum(1 for i in result.images if i.ok),
+            hosted=sum(1 for i in result.images if i.public_url),
+        )
         return result
 
     # -- fetch + validate --
 
-    def _fetch_and_check(self, sku: str, asset: MediaAsset) -> ProcessedImage:
-        out = ProcessedImage(role=asset.role, source_url=asset.source_url)
-        try:
-            resp = self._http.get(asset.source_url)
+    def _downloader(self, url: str) -> Callable[[], bytes]:
+        def read() -> bytes:
+            resp = self._http.get(url)
             resp.raise_for_status()
-            data = resp.content
-        except httpx.HTTPError as exc:
-            out.errors.append(f"could not download: {exc}")
-            log.warning("media.download_failed", sku=sku, url=asset.source_url, error=str(exc))
+            return resp.content
+
+        return read
+
+    def _read_and_check(
+        self, sku: str, role: str, source: str, read: Callable[[], bytes]
+    ) -> ProcessedImage:
+        out = ProcessedImage(role=role, source_url=source)
+        try:
+            data = read()
+        except (httpx.HTTPError, OSError) as exc:
+            out.errors.append(f"could not read: {exc}")
+            log.warning("media.read_failed", sku=sku, source=source, error=str(exc))
             return out
 
         out.size_bytes = len(data)
@@ -185,7 +258,7 @@ class MediaPipeline:
                 out.width, out.height = img.size
                 out.image_format = img.format or ""
                 self._check_dimensions(out)
-                if asset.role == "main":
+                if role == "main":
                     self._check_white_background(img, out)
         except UnidentifiedImageError:
             out.errors.append("not a decodable image (the URL may return an HTML error page)")
@@ -196,7 +269,7 @@ class MediaPipeline:
 
         cache_dir = self.settings.media_dir / sku
         cache_dir.mkdir(parents=True, exist_ok=True)
-        ext = _extension_for(out.image_format, asset.source_url)
+        ext = _extension_for(out.image_format, source)
         path = cache_dir / f"{out.content_hash[:16]}{ext}"
         if not path.exists():
             path.write_bytes(data)
@@ -212,9 +285,8 @@ class MediaPipeline:
             )
         if out.longest_side < MIN_LONGEST_SIDE:
             out.errors.append(
-                f"longest side is {out.longest_side}px; Amazon requires at least "
-                f"{MIN_LONGEST_SIDE}px for the zoom feature, and jewelry does not sell without "
-                f"zoom"
+                f"longest side is {out.longest_side}px; at least {MIN_LONGEST_SIDE}px is "
+                f"required (below that Amazon disables zoom, and jewelry does not sell without it)"
             )
         elif out.longest_side < RECOMMENDED_LONGEST_SIDE:
             out.warnings.append(
@@ -222,8 +294,9 @@ class MediaPipeline:
                 f"noticeably better on the detail page"
             )
         if out.longest_side > MAX_LONGEST_SIDE:
-            out.errors.append(f"longest side is {out.longest_side}px; the maximum is "
-                              f"{MAX_LONGEST_SIDE}px")
+            out.errors.append(
+                f"longest side is {out.longest_side}px; the maximum is {MAX_LONGEST_SIDE}px"
+            )
 
     @staticmethod
     def _check_white_background(img: Image.Image, out: ProcessedImage) -> None:
@@ -237,13 +310,10 @@ class MediaPipeline:
             rgb = img.convert("RGB")
             w, h = rgb.size
             step = max(1, min(w, h) // 100)
-            border: list[tuple[int, int, int]] = []
-            for x in range(0, w, step):
-                border.append(rgb.getpixel((x, 0)))
-                border.append(rgb.getpixel((x, h - 1)))
-            for y in range(0, h, step):
-                border.append(rgb.getpixel((0, y)))
-                border.append(rgb.getpixel((w - 1, y)))
+            coords = [(x, 0) for x in range(0, w, step)] + [(x, h - 1) for x in range(0, w, step)]
+            coords += [(0, y) for y in range(0, h, step)] + [(w - 1, y) for y in range(0, h, step)]
+            # An RGB image always yields an (r, g, b) tuple per pixel.
+            border = [cast(tuple[int, int, int], rgb.getpixel(xy)) for xy in coords]
             if not border:
                 return
             white = sum(1 for px in border if all(c >= WHITE_THRESHOLD for c in px))
@@ -263,8 +333,15 @@ class MediaPipeline:
         if self._uploader is not None:
             return self._uploader
         s = self.settings
-        if not all([s.r2_account_id, s.r2_access_key_id, s.r2_secret_access_key,
-                    s.r2_bucket, s.r2_public_base_url]):
+        if not all(
+            [
+                s.r2_account_id,
+                s.r2_access_key_id,
+                s.r2_secret_access_key,
+                s.r2_bucket,
+                s.r2_public_base_url,
+            ]
+        ):
             return None
         self._uploader = R2Uploader(s)
         return self._uploader

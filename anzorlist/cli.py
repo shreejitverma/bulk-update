@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import structlog
 import typer
@@ -29,10 +29,14 @@ from rich.table import Table
 from anzorlist.config import MissingCredential, Settings
 from anzorlist.config import settings as get_settings
 from anzorlist.ingest import read_workbook, write_template
+from anzorlist.ingest.row import ListingRow
 from anzorlist.marketplaces import group_by_region, resolve, resolve_all
-from anzorlist.models.listing import BuiltListing
+from anzorlist.models.listing import BuiltListing, SubmissionOutcome
 from anzorlist.pipeline import BuildOptions, BuildPipeline, BuildReport
-from anzorlist.store.db import Ledger
+from anzorlist.store.db import Ledger, new_run_id
+
+if TYPE_CHECKING:
+    from anzorlist.channels.amazon.client import ClientPool
 
 app = typer.Typer(
     name="anzorlist",
@@ -49,6 +53,10 @@ app.add_typer(amazon_app, name="amazon")
 
 console = Console()
 err_console = Console(stderr=True)
+
+# Exit codes: 0 done, 1 something failed or was blocked, 2 refused (safety gate or bad setup),
+# 3 accepted by Amazon for processing but the result is not known yet.
+EXIT_PENDING = 3
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -90,27 +98,64 @@ def doctor() -> None:
         mark = "[green]OK[/]" if ok else ("[yellow]—[/]" if ok is None else "[red]MISSING[/]")
         table.add_row(name, mark, detail)
 
-    add("workbook", s.workbook_path.exists(),
-        str(s.workbook_path) if s.workbook_path.exists()
-        else f"{s.workbook_path} not found — run `anzorlist workbook init`")
+    add(
+        "workbook",
+        s.workbook_path.exists(),
+        (
+            str(s.workbook_path)
+            if s.workbook_path.exists()
+            else f"{s.workbook_path} not found — run `anzorlist workbook init`"
+        ),
+    )
     add("brand", bool(s.brand_name), f"{s.brand_name} (manufacturer: {s.manufacturer})")
-    add("brand registry", s.is_brand_registered or None,
-        "enrolled" if s.is_brand_registered
-        else "not enrolled — GTIN exemption needs approval in Seller Central")
+    add(
+        "brand registry",
+        s.is_brand_registered or None,
+        (
+            "enrolled"
+            if s.is_brand_registered
+            else "not enrolled — GTIN exemption needs approval in Seller Central"
+        ),
+    )
 
-    add("Anthropic API key", s.anthropic_api_key is not None,
-        f"copy model {s.copy_model}, escalates to {s.copy_model_escalation}"
-        if s.anthropic_api_key else "copy generation will use the spec-sheet fallback")
+    add(
+        "Anthropic API key",
+        s.anthropic_api_key is not None,
+        (
+            f"copy model {s.copy_model}, escalates to {s.copy_model_escalation}"
+            if s.anthropic_api_key
+            else "copy generation will use the spec-sheet fallback"
+        ),
+    )
 
-    r2_ok = all([s.r2_account_id, s.r2_access_key_id, s.r2_secret_access_key,
-                 s.r2_bucket, s.r2_public_base_url])
-    add("image hosting (R2)", r2_ok,
-        f"bucket {s.r2_bucket} → {s.r2_public_base_url}" if r2_ok
-        else "not configured — listings cannot carry images without it")
+    r2_ok = all(
+        [
+            s.r2_account_id,
+            s.r2_access_key_id,
+            s.r2_secret_access_key,
+            s.r2_bucket,
+            s.r2_public_base_url,
+        ]
+    )
+    add(
+        "image hosting (R2)",
+        r2_ok,
+        (
+            f"bucket {s.r2_bucket} → {s.r2_public_base_url}"
+            if r2_ok
+            else "not configured — listings cannot carry images without it"
+        ),
+    )
 
-    add("SP-API app", s.has_spapi_credentials(),
-        "LWA client id and secret present" if s.has_spapi_credentials()
-        else "register a developer profile and create an SP-API app (see docs/RUNBOOK.md)")
+    add(
+        "SP-API app",
+        s.has_spapi_credentials(),
+        (
+            "LWA client id and secret present"
+            if s.has_spapi_credentials()
+            else "register a developer profile and create an SP-API app (see docs/RUNBOOK.md)"
+        ),
+    )
 
     markets = resolve_all(s.marketplaces)
     for region, group in group_by_region(markets).items():
@@ -122,9 +167,15 @@ def doctor() -> None:
         except MissingCredential as exc:
             add(f"auth: {region.value.upper()}", False, f"{codes} — {exc.var} is not set")
 
-    add("live writes", None,
-        "[green]ENABLED[/] — submit can create listings" if s.allow_live
-        else "disabled (ANZOR_ALLOW_LIVE=false); submit will refuse")
+    add(
+        "live writes",
+        None,
+        (
+            "[green]ENABLED[/] — submit can create listings"
+            if s.allow_live
+            else "disabled (ANZOR_ALLOW_LIVE=false); submit will refuse"
+        ),
+    )
 
     console.print(table)
     schemas = sorted(s.schema_cache_dir.glob("*.json")) if s.schema_cache_dir.exists() else []
@@ -147,13 +198,15 @@ def workbook_init(
     target = path or s.workbook_path
     existed = target.exists()
     out = write_template(target, with_examples=not no_examples, preserve_existing=True)
-    console.print(Panel.fit(
-        f"[bold green]{'Regenerated' if existed else 'Created'}[/] {out}\n\n"
-        "Open the [bold]Products[/] tab and fill in the [bold]SKU[/] column.\n"
-        "Everything else is optional — hover any header for what it does.\n\n"
-        "Then run: [cyan]anzorlist workbook validate[/]",
-        title="workbook ready",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold green]{'Regenerated' if existed else 'Created'}[/] {out}\n\n"
+            "Open the [bold]Products[/] tab and fill in the [bold]SKU[/] column.\n"
+            "Everything else is optional — hover any header for what it does.\n\n"
+            "Then run: [cyan]anzorlist workbook validate[/]",
+            title="workbook ready",
+        )
+    )
 
 
 @workbook_app.command("validate")
@@ -218,8 +271,10 @@ def build(
     s = get_settings()
     result = read_workbook(s.workbook_path)
     if result.errors:
-        err_console.print(f"[red]The workbook has {len(result.errors)} error(s).[/] "
-                          "Run `anzorlist workbook validate` first.")
+        err_console.print(
+            f"[red]The workbook has {len(result.errors)} error(s).[/] "
+            "Run `anzorlist workbook validate` first."
+        )
         raise typer.Exit(1)
 
     rows = result.included()
@@ -228,8 +283,9 @@ def build(
         rows = [r for r in rows if r.sku in wanted]
         missing = wanted - {r.sku for r in rows}
         if missing:
-            err_console.print(f"[yellow]Not in the workbook (or Include = N):[/] "
-                              f"{', '.join(sorted(missing))}")
+            err_console.print(
+                f"[yellow]Not in the workbook (or Include = N):[/] {', '.join(sorted(missing))}"
+            )
     if not rows:
         err_console.print("[red]Nothing to build.[/] Add SKUs to the Products tab.")
         raise typer.Exit(1)
@@ -264,12 +320,14 @@ def _print_build_report(report: BuildReport, s: Settings) -> None:
 
     for b in report.builds:
         if b.errors:
-            status = "[red]" + "; ".join(b.errors)[:70] + "[/]"
+            status = "[red]" + "; ".join(b.errors) + "[/]"
         else:
             blocking = [i for listing in b.listings for i in listing.blocking_issues]
             warnings = [i for listing in b.listings for i in listing.issues if not i.blocking]
             if blocking:
-                status = f"[red]{len(blocking)} blocking[/]: {blocking[0].message[:55]}"
+                # Lead with a root cause, not the parent's derived "family is blocked" note.
+                cause = next((i for i in blocking if i.code != "FamilyBlocked"), blocking[0])
+                status = f"[red]{len(blocking)} blocking[/]: {cause.message}"
             elif warnings:
                 status = f"[yellow]{len(warnings)} warning(s)[/]"
             else:
@@ -285,55 +343,104 @@ def _print_build_report(report: BuildReport, s: Settings) -> None:
     )
     console.print(f"Payloads written to [cyan]{s.build_dir}/[/]")
     if c["listings_submittable"]:
-        console.print("\nNext: [cyan]anzorlist amazon validate[/] "
-                      "(Amazon checks the payload and creates nothing)")
+        console.print(
+            "\nNext: [cyan]anzorlist amazon validate[/] "
+            "(Amazon checks the payload and creates nothing)"
+        )
 
 
 # =====================================================================  amazon
 
 
-def _pool_and_settings():  # type: ignore[no-untyped-def]
+def _make_pool(s: Settings) -> ClientPool:
+    """Construct the SP-API client pool. A seam: the end-to-end tests swap in a fake Amazon."""
     from anzorlist.channels.amazon.client import ClientPool
 
+    return ClientPool(s)
+
+
+def _pool_and_settings() -> tuple[ClientPool, Settings]:
     s = get_settings()
     if not s.has_spapi_credentials():
-        err_console.print(Panel.fit(
-            "[red]No SP-API credentials.[/]\n\n"
-            "This command needs a registered SP-API application. Until then, everything up to "
-            "and including [cyan]anzorlist build[/] works offline.\n\n"
-            "Setup steps: [cyan]docs/RUNBOOK.md[/]",
-            title="credentials required",
-        ))
+        err_console.print(
+            Panel.fit(
+                "[red]No SP-API credentials.[/]\n\n"
+                "This command needs a registered SP-API application. Until then, everything up to "
+                "and including [cyan]anzorlist build[/] works offline.\n\n"
+                "Setup steps: [cyan]docs/RUNBOOK.md[/]",
+                title="credentials required",
+            )
+        )
         raise typer.Exit(2)
-    return ClientPool(s), s
+    return _make_pool(s), s
 
 
-def _load_built(s: Settings, skus: list[str] | None) -> list[BuiltListing]:
-    """Read payloads back off disk. The file is the artifact of record."""
-    listings: list[BuiltListing] = []
-    if not s.build_dir.exists():
-        return listings
-    wanted = {x.upper() for x in skus} if skus else None
-    for path in sorted(s.build_dir.rglob("*.json")):
-        data = json.loads(path.read_text())
-        if wanted and data["sku"].upper() not in wanted:
-            continue
-        listings.append(BuiltListing(
-            sku=data["sku"],
-            parent_sku=data.get("parentSku"),
-            source_sku=data.get("sku"),
-            marketplace_id=resolve(data["marketplace"]).marketplace_id,
-            marketplace_code=data["marketplace"],
-            product_type=data["productType"],
-            requirements=data.get("requirements", "LISTING"),
-            attributes=data["body"]["attributes"],
-            is_parent=data.get("isParent", False),
-            payload_hash=data.get("payloadHash", ""),
-            source_url=data.get("sourceUrl", ""),
-        ))
-    # Parents must be created before their children reference them.
-    listings.sort(key=lambda x: (not x.is_parent,))
-    return listings
+def _select_built(
+    s: Settings, skus: list[str] | None
+) -> tuple[list[BuiltListing], list[BuiltListing]]:
+    """(selected, everything built): the listings an ``amazon`` command acts on, and the full
+    build that parent/child checks consult.
+
+    With explicit SKUs, those (a website SKU selects its whole variation family). Without, the
+    rows currently included in the workbook, in the marketplaces those rows name - so a SKU set
+    to Include = N is never sent just because an old build of it is still on disk.
+    """
+    from anzorlist.channels.amazon.artifacts import ArtifactError, load_listings
+    from anzorlist.channels.amazon.submit import select_listings
+
+    try:
+        loaded = load_listings(s.build_dir)
+    except ArtifactError as exc:
+        err_console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
+    if loaded.legacy_files:
+        err_console.print(
+            f"[yellow]Ignoring {len(loaded.legacy_files)} payload(s) in the old flat layout "
+            f"(e.g. {loaded.legacy_files[0]}). They carry no local check results; run "
+            f"`anzorlist build` to regenerate them.[/]"
+        )
+
+    rows: list[ListingRow] | None = None
+    if not skus:
+        if not s.workbook_path.exists():
+            err_console.print(
+                f"[red]Workbook not found: {s.workbook_path}.[/] Without it there is no list of "
+                "included rows to act on; name the SKUs explicitly."
+            )
+            raise typer.Exit(2)
+        result = read_workbook(s.workbook_path)
+        if result.errors:
+            err_console.print(
+                f"[red]The workbook has {len(result.errors)} error(s).[/] "
+                "Run `anzorlist workbook validate`, or name the SKUs explicitly."
+            )
+            raise typer.Exit(1)
+        rows = result.included()
+
+    selected = select_listings(
+        loaded.listings, skus=skus, rows=rows, default_marketplaces=s.marketplaces
+    )
+    if skus:
+        found = {x.source_sku.upper() for x in selected} | {x.sku.upper() for x in selected}
+        missing = sorted({k.upper() for k in skus} - found)
+        if missing:
+            err_console.print(f"[yellow]No built payloads for:[/] {', '.join(missing)}")
+    return selected, loaded.listings
+
+
+def _print_local_blockers(listings: list[BuiltListing], title: str) -> None:
+    if not listings:
+        return
+    table = Table(title=title, show_lines=False)
+    table.add_column("SKU", style="cyan", no_wrap=True)
+    table.add_column("Mkt", no_wrap=True)
+    table.add_column("Blocking problem", overflow="fold")
+    for x in listings[:25]:
+        first = x.blocking_issues[0] if x.blocking_issues else None
+        table.add_row(x.sku, x.marketplace_code, f"{first.code}: {first.message}" if first else "")
+    console.print(table)
+    if len(listings) > 25:
+        console.print(f"[dim]... and {len(listings) - 25} more[/]")
 
 
 @amazon_app.command("sync-schemas")
@@ -358,16 +465,20 @@ def amazon_sync_schemas(
         for pt in types:
             try:
                 schema = client.get_schema(pt, market, refresh=True)
-                console.print(f"  [green]✓[/] {pt:<16} {len(schema.required_attributes)} required, "
-                              f"{len(schema.known_attributes)} total attributes")
+                console.print(
+                    f"  [green]✓[/] {pt:<16} {len(schema.required_attributes)} required, "
+                    f"{len(schema.known_attributes)} total attributes"
+                )
                 ok += 1
             except Exception as exc:  # noqa: BLE001
                 failed.append(pt)
                 console.print(f"  [yellow]✗[/] {pt:<16} {str(exc)[:80]}")
         console.print(f"\n[bold]{ok}[/] cached to [cyan]{s.schema_cache_dir}[/]")
         if failed:
-            console.print(f"[yellow]Not available in {market.code}:[/] {', '.join(failed)} "
-                          "— remove these from the workbook's dropdown if you never use them.")
+            console.print(
+                f"[yellow]Not available in {market.code}:[/] {', '.join(failed)} "
+                "— remove these from the workbook's dropdown if you never use them."
+            )
     finally:
         pool.close()
 
@@ -389,8 +500,7 @@ def amazon_preflight(
         for market in markets:
             client = PreflightClient(pool.for_region(market.region))
             report = client.run(market, sample_asin=asin)
-            console.print(Panel(report.render(),
-                                border_style="red" if report.blocked else "green"))
+            console.print(Panel(report.render(), border_style="red" if report.blocked else "green"))
             blocked = blocked or report.blocked
         if blocked:
             raise typer.Exit(1)
@@ -400,38 +510,41 @@ def amazon_preflight(
 
 @amazon_app.command("validate")
 def amazon_validate(
-    skus: Annotated[list[str] | None, typer.Argument()] = None,
+    skus: Annotated[
+        list[str] | None,
+        typer.Argument(help="Website SKUs (whole family) or listing SKUs; default: workbook."),
+    ] = None,
 ) -> None:
-    """Run every built payload through Amazon's own validator. Creates nothing.
+    """Run built payloads through Amazon's own validator. Creates nothing.
 
     This is the real dry run: Amazon applies the identical rules it would apply to a live
     submission, and returns the identical issues, without creating a listing.
     """
-    from anzorlist.channels.amazon.listings import ListingsClient
+    from anzorlist.channels.amazon.submit import AmazonSubmitter
 
     pool, s = _pool_and_settings()
-    listings = _load_built(s, skus)
+    listings, _ = _select_built(s, skus)
     if not listings:
-        err_console.print("[red]No built payloads found.[/] Run `anzorlist build` first.")
+        pool.close()
+        err_console.print("[red]No built payloads selected.[/] Run `anzorlist build` first.")
         raise typer.Exit(1)
 
+    blocked = [x for x in listings if not x.submittable]
     with Ledger(s.state_db) as ledger:
-        run_id = f"validate-{listings[0].payload_hash[:8]}"
+        run_id = new_run_id("validate")
         ledger.start_run(run_id, "amazon validate", mode="VALIDATION_PREVIEW")
-        outcomes = []
         try:
-            for listing in listings:
-                market = resolve(listing.marketplace_code)
-                client = ListingsClient(pool.for_region(market.region), s)
-                outcome = client.put(listing, market, mode="VALIDATION_PREVIEW")
-                ledger.record_submission(outcome, run_id)
-                outcomes.append(outcome)
+            outcomes = AmazonSubmitter(pool, s, ledger, run_id).validate(listings)
         finally:
             pool.close()
-        ledger.finish_run(run_id, {"validated": len(outcomes)})
+        ledger.finish_run(
+            run_id,
+            {"validated": len(outcomes), "passed": sum(1 for o in outcomes if o.accepted)},
+        )
 
     _print_outcomes(outcomes, "Amazon validation (nothing was created)")
-    if any(not o.accepted for o in outcomes):
+    _print_local_blockers(blocked, "Blocked by local checks (submit will skip these)")
+    if blocked or any(not o.accepted for o in outcomes):
         raise typer.Exit(1)
     console.print("\n[green]All payloads pass Amazon's validation.[/]")
     console.print("To create them for real: [cyan]anzorlist amazon submit --confirm[/]")
@@ -439,89 +552,218 @@ def amazon_validate(
 
 @amazon_app.command("submit")
 def amazon_submit(
-    skus: Annotated[list[str] | None, typer.Argument()] = None,
+    skus: Annotated[
+        list[str] | None,
+        typer.Argument(help="Website SKUs (whole family) or listing SKUs; default: workbook."),
+    ] = None,
     confirm: Annotated[
         bool, typer.Option("--confirm", help="Required. Creates real listings.")
     ] = False,
-    skip_validate: Annotated[bool, typer.Option("--skip-validate")] = False,
+    feed: Annotated[
+        bool,
+        typer.Option(
+            "--feed",
+            help="Bulk mode: JSON_LISTINGS_FEED instead of one call per listing. "
+            "Use for hundreds of listings or more.",
+        ),
+    ] = False,
+    skip_validate: Annotated[
+        bool,
+        typer.Option("--skip-validate", help="Per-item mode: skip the preview before each write."),
+    ] = False,
+    preview_sample: Annotated[
+        int,
+        typer.Option(min=1, help="Feed mode: listings per marketplace previewed before sending."),
+    ] = 5,
+    wait: Annotated[
+        bool, typer.Option("--wait/--no-wait", help="Feed mode: wait for Amazon's report.")
+    ] = True,
 ) -> None:
     """Create listings on Amazon. The only command that writes to the account."""
-    from anzorlist.channels.amazon.listings import ListingsClient
+    from anzorlist.channels.amazon.submit import AmazonSubmitter, plan_submission
 
     s = get_settings()
     if not confirm:
-        err_console.print(Panel.fit(
-            "[red]--confirm is required.[/]\n\n"
-            "This command creates real listings on your Amazon account.\n"
-            "Run [cyan]anzorlist amazon validate[/] first — it exercises the identical payload "
-            "through Amazon's validator and creates nothing.",
-            title="refusing to submit",
-        ))
+        err_console.print(
+            Panel.fit(
+                "[red]--confirm is required.[/]\n\n"
+                "This command creates real listings on your Amazon account.\n"
+                "Run [cyan]anzorlist amazon validate[/] first - it exercises the identical payload "
+                "through Amazon's validator and creates nothing.",
+                title="refusing to submit",
+            )
+        )
         raise typer.Exit(2)
     if not s.allow_live:
-        err_console.print(Panel.fit(
-            "[red]ANZOR_ALLOW_LIVE is not enabled.[/]\n\n"
-            "Both gates must be open: set [cyan]ANZOR_ALLOW_LIVE=true[/] in .env and pass "
-            "--confirm. They are separate on purpose — neither a stray flag nor a stale config "
-            "value can cause a write on its own.",
-            title="refusing to submit",
-        ))
+        err_console.print(
+            Panel.fit(
+                "[red]ANZOR_ALLOW_LIVE is not enabled.[/]\n\n"
+                "Both gates must be open: set [cyan]ANZOR_ALLOW_LIVE=true[/] in .env and pass "
+                "--confirm. They are separate on purpose - neither a stray flag nor a stale config "
+                "value can cause a write on its own.",
+                title="refusing to submit",
+            )
+        )
         raise typer.Exit(2)
 
     pool, _ = _pool_and_settings()
-    listings = _load_built(s, skus)
-    if not listings:
-        err_console.print("[red]No built payloads found.[/] Run `anzorlist build` first.")
+    try:
+        listings, everything = _select_built(s, skus)
+        if not listings:
+            err_console.print("[red]No built payloads selected.[/] Run `anzorlist build` first.")
+            raise typer.Exit(1)
+
+        with Ledger(s.state_db) as ledger:
+            plan = plan_submission(
+                listings, ledger.submission_state, is_live=ledger.is_live, family=everything
+            )
+            _print_local_blockers(plan.blocked, "Not sent: blocked by local checks")
+            if plan.orphaned:
+                console.print(
+                    f"[yellow]{len(plan.orphaned)} listing(s) not sent because the rest of "
+                    f"their variation family is blocked, or their parent is not on Amazon yet "
+                    f"(submit the parent too):[/] "
+                    + ", ".join(f"{x.sku} ({x.marketplace_code})" for x in plan.orphaned)
+                )
+            if plan.unchanged:
+                console.print(
+                    f"[dim]{len(plan.unchanged)} listing(s) unchanged since the last accepted "
+                    f"submission - skipping.[/]"
+                )
+            if plan.in_flight:
+                console.print(
+                    f"[yellow]{len(plan.in_flight)} listing(s) are in a feed that has not been "
+                    f"reconciled - skipping. Run `anzorlist amazon feed-status` to list them.[/]"
+                )
+            if not plan.send:
+                if plan.blocked or plan.orphaned:
+                    raise typer.Exit(1)
+                if plan.in_flight:
+                    raise typer.Exit(EXIT_PENDING)
+                console.print("[green]Everything is already up to date.[/]")
+                return
+
+            mode = "feed" if feed else "per-item"
+            console.print(
+                f"\n[bold yellow]About to create {len(plan.send)} listing(s) on Amazon ({mode}):[/]"
+            )
+            for x in plan.send[:10]:
+                kind = "parent" if x.is_parent else "child" if x.parent_sku else "standalone"
+                price = f" @ {x.offer.currency} {x.offer.price}" if x.offer else ""
+                console.print(f"  {x.sku:<24} {x.marketplace_code}  {kind:<10}{price}")
+            if len(plan.send) > 10:
+                console.print(f"  ... and {len(plan.send) - 10} more")
+            if not typer.confirm("\nProceed?", default=False):
+                console.print("Aborted. Nothing was sent.")
+                raise typer.Exit(0)
+
+            run_id = new_run_id("submit")
+            ledger.start_run(run_id, "amazon submit", mode="FEED" if feed else "SUBMIT")
+            submitter = AmazonSubmitter(pool, s, ledger, run_id)
+            try:
+                if feed:
+                    submitter.submit_feed(plan.send, preview_sample=preview_sample, wait=wait)
+                else:
+                    submitter.submit_items(plan.send, preview_first=not skip_validate)
+            finally:
+                # Whatever happened, record and show what was written before it happened.
+                outcomes = submitter.outcomes
+                pending = submitter.feed_run.pending
+                ledger.finish_run(
+                    run_id,
+                    {
+                        "sent": len(plan.send),
+                        "accepted": sum(1 for o in outcomes if o.accepted),
+                        "failed": sum(1 for o in outcomes if not o.accepted),
+                        "in_flight": sum(len(m.messages) for m in pending),
+                        "blocked": len(plan.blocked) + len(plan.orphaned),
+                    },
+                )
+                if outcomes:
+                    _print_outcomes(outcomes, f"Submission {run_id}")
+                for manifest in pending:
+                    console.print(
+                        f"[yellow]Feed {manifest.feed_id} ({len(manifest.messages)} listing(s)) "
+                        f"has no result yet.[/] Check it with "
+                        f"[cyan]anzorlist amazon feed-status {manifest.feed_id}[/]"
+                    )
+    finally:
+        pool.close()
+
+    if any(o.accepted for o in outcomes):
+        console.print(
+            "\n[bold]Accepted listings are created but not yet buyable.[/] Amazon processes new "
+            "fine-jewelry listings asynchronously; check [cyan]anzorlist amazon status[/] in a "
+            "few minutes, then confirm the detail pages in Seller Central before enabling "
+            "inventory."
+        )
+    if plan.blocked or plan.orphaned or any(not o.accepted for o in outcomes):
         raise typer.Exit(1)
+    if pending:
+        raise typer.Exit(EXIT_PENDING)
 
-    with Ledger(s.state_db) as ledger:
-        pending = [x for x in listings if ledger.needs_submission(x)]
-        unchanged = len(listings) - len(pending)
-        if unchanged:
-            console.print(f"[dim]{unchanged} listing(s) unchanged since the last accepted "
-                          f"submission — skipping.[/]")
-        if not pending:
-            console.print("[green]Everything is already up to date.[/]")
-            return
 
-        console.print(f"\n[bold yellow]About to create {len(pending)} listing(s) on Amazon:[/]")
-        for x in pending[:10]:
-            kind = "parent" if x.is_parent else "child" if x.parent_sku else "standalone"
-            price = f" @ {x.offer.currency} {x.offer.price}" if x.offer else ""
-            console.print(f"  {x.sku:<24} {x.marketplace_code}  {kind:<10}{price}")
-        if len(pending) > 10:
-            console.print(f"  ... and {len(pending) - 10} more")
-        if not typer.confirm("\nProceed?", default=False):
-            console.print("Aborted. Nothing was sent.")
-            raise typer.Exit(0)
-
-        run_id = f"submit-{listings[0].payload_hash[:8]}"
-        ledger.start_run(run_id, "amazon submit", mode="SUBMIT")
-        outcomes = []
-        try:
-            for listing in pending:
-                market = resolve(listing.marketplace_code)
-                client = ListingsClient(pool.for_region(market.region), s)
-                if not skip_validate:
-                    preview = client.put(listing, market, mode="VALIDATION_PREVIEW")
-                    ledger.record_submission(preview, run_id)
-                    if not preview.accepted:
-                        console.print(f"[red]✗ {listing.sku}[/] failed validation — not submitted")
-                        outcomes.append(preview)
-                        continue
-                outcome = client.put(listing, market, mode="SUBMIT", confirm=True)
-                ledger.record_submission(outcome, run_id)
-                outcomes.append(outcome)
-        finally:
-            pool.close()
-        ledger.finish_run(run_id, {"submitted": sum(1 for o in outcomes if o.accepted)})
-
-    _print_outcomes(outcomes, f"Submission {run_id}")
-    console.print(
-        "\n[bold]Listings are created but not yet buyable.[/] Amazon processes new fine-jewelry "
-        "listings asynchronously; check [cyan]anzorlist amazon status[/] in a few minutes, then "
-        "confirm the detail pages in Seller Central before enabling inventory."
+@amazon_app.command("feed-status")
+def amazon_feed_status(
+    feed_id: Annotated[
+        str | None,
+        typer.Argument(help="A feed id from `amazon submit --feed`; omit to list open feeds."),
+    ] = None,
+    wait: Annotated[bool, typer.Option("--wait", help="Poll until the feed finishes.")] = False,
+) -> None:
+    """Check a bulk feed and record its per-listing results in the ledger."""
+    from anzorlist.channels.amazon.feeds import (
+        FeedError,
+        FeedManifest,
+        FeedPending,
+        FeedsClient,
+        reconcile,
     )
+    from anzorlist.channels.amazon.submit import AmazonSubmitter
+
+    if feed_id is None:
+        s = get_settings()
+        open_feeds = FeedManifest.unreconciled(s.data_dir / "feeds")
+        if not open_feeds:
+            console.print("No unreconciled feeds.")
+            return
+        table = Table(title=f"{len(open_feeds)} feed(s) without a recorded result")
+        for col in ("Feed", "Mkt", "Listings", "Created"):
+            table.add_column(col)
+        for m in open_feeds:
+            table.add_row(m.feed_id, m.marketplace_code, str(len(m.messages)), m.created_at[:19])
+        console.print(table)
+        console.print("Check one with [cyan]anzorlist amazon feed-status <feed-id>[/]")
+        return
+
+    pool, s = _pool_and_settings()
+    try:
+        try:
+            manifest = FeedManifest.load(s.data_dir / "feeds", feed_id)
+        except FeedError as exc:
+            err_console.print(f"[red]{exc}[/]")
+            raise typer.Exit(1) from exc
+        market = resolve(manifest.marketplace_code)
+        feeds = FeedsClient(pool.for_region(market.region), s, raw_http=pool.raw_http)
+        try:
+            result = feeds.wait(feed_id) if wait else feeds.check(feed_id)
+        except FeedPending as exc:
+            console.print(f"[yellow]{exc}[/] - nothing to record yet.")
+            raise typer.Exit(EXIT_PENDING) from exc
+        outcomes = reconcile(result, manifest)
+        if manifest.reconciled:
+            console.print("[dim]Already recorded in the ledger; showing the report again.[/]")
+        else:
+            with Ledger(s.state_db) as ledger:
+                AmazonSubmitter(pool, s, ledger, manifest.run_id).record_feed_outcomes(
+                    manifest, outcomes
+                )
+    finally:
+        pool.close()
+
+    _print_outcomes(outcomes, f"Feed {feed_id} ({result.processing_status})")
+    if any(not o.accepted for o in outcomes):
+        raise typer.Exit(1)
 
 
 @amazon_app.command("status")
@@ -541,8 +783,14 @@ def amazon_status(
                 table.add_column(col, overflow="fold")
             for h in history:
                 issues = json.loads(h["issues_json"])
-                table.add_row(h["submitted_at"][:19], h["marketplace_id"][:14], h["mode"],
-                              h["status"], (h["submission_id"] or "")[:20], str(len(issues)))
+                table.add_row(
+                    h["submitted_at"][:19],
+                    h["marketplace_id"][:14],
+                    h["mode"],
+                    h["status"],
+                    (h["submission_id"] or "")[:20],
+                    str(len(issues)),
+                )
             console.print(table)
             return
 
@@ -556,8 +804,10 @@ def amazon_status(
         live = ledger.live_skus()
         console.print(f"\n[bold]{len(live)}[/] SKU(s) believed to exist on Amazon.")
         for run in ledger.recent_runs(5):
-            console.print(f"  [dim]{run['started_at'][:19]}  {run['command']:<18} "
-                          f"{run['mode']:<20} {run.get('counts_json') or ''}[/]")
+            console.print(
+                f"  [dim]{run['started_at'][:19]}  {run['command']:<18} "
+                f"{run['mode']:<20} {run.get('counts_json') or ''}[/]"
+            )
 
 
 @amazon_app.command("delete")
@@ -576,29 +826,47 @@ def amazon_delete(
 
     market = resolve(marketplace)
     console.print(f"[bold red]About to DELETE {len(skus)} listing(s) from {market.code}.[/]")
-    console.print("[dim]This removes your offer. Sales history and reviews on the ASIN are "
-                  "not recoverable by re-listing.[/]")
+    console.print(
+        "[dim]This removes your offer. Sales history and reviews on the ASIN are "
+        "not recoverable by re-listing.[/]"
+    )
     if not typer.confirm("Type-check: proceed with deletion?", default=False):
         console.print("Aborted.")
         raise typer.Exit(0)
 
+    from anzorlist.channels.amazon.client import SpApiError
+
     pool, _ = _pool_and_settings()
+    deleted, failed = 0, 0
     with Ledger(s.state_db) as ledger:
-        run_id = f"delete-{market.code}"
-        ledger.start_run(run_id, "amazon delete", mode="SUBMIT")
+        run_id = new_run_id("delete")
+        ledger.start_run(run_id, "amazon delete", mode="DELETE")
         try:
             client = ListingsClient(pool.for_region(market.region), s)
             for sku in skus:
-                outcome = client.delete(sku, market, confirm=True)
+                try:
+                    outcome = client.delete(sku, market, confirm=True)
+                except SpApiError as exc:
+                    failed += 1
+                    console.print(f"  [red]not deleted[/] [cyan]{sku}[/]: {exc}")
+                    continue
                 ledger.record_submission(outcome, run_id)
-                console.print(f"  deleted [cyan]{sku}[/]")
+                if outcome.accepted:
+                    deleted += 1
+                    console.print(f"  deleted [cyan]{sku}[/]")
+                else:
+                    failed += 1
+                    console.print(f"  [red]not confirmed[/] [cyan]{sku}[/]: {outcome.summary()}")
         finally:
             pool.close()
-        ledger.finish_run(run_id, {"deleted": len(skus)})
+            ledger.finish_run(run_id, {"deleted": deleted, "failed": failed})
+    if failed:
+        raise typer.Exit(1)
 
 
-def _print_outcomes(outcomes: list, title: str) -> None:  # type: ignore[type-arg]
-    table = Table(title=title, show_lines=False)
+def _print_outcomes(outcomes: list[SubmissionOutcome], title: str) -> None:
+    # A narrow table would otherwise wrap the title and split the run id mid-token.
+    table = Table(title=title, show_lines=False, min_width=len(title))
     table.add_column("SKU", style="cyan", no_wrap=True)
     table.add_column("Mkt", no_wrap=True)
     table.add_column("Result", no_wrap=True)

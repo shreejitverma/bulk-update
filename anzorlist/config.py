@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default=Path("data"), alias="ANZOR_DATA_DIR")
     workbook_path: Path = Field(default=Path("Product Listing.xlsx"), alias="ANZOR_WORKBOOK")
     state_db: Path = Field(default=Path("data/anzorlist.sqlite"), alias="ANZOR_STATE_DB")
+    # Operator-supplied product photos, one folder per SKU (images/R985/01.jpg, 02.jpg, ...).
+    # When a SKU's folder exists, its photos replace the website's, which are often too small.
+    images_dir: Path = Field(default=Path("images"), alias="ANZOR_IMAGES_DIR")
 
     # ---- Site extraction ----
     base_url: str = Field(default="https://www.anzorjewelrycorp.com", alias="ANZOR_BASE_URL")
@@ -68,9 +71,7 @@ class Settings(BaseSettings):
     # ---- Copy generation ----
     anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     copy_model: str = Field(default="claude-sonnet-5", alias="ANZOR_COPY_MODEL")
-    copy_model_escalation: str = Field(
-        default="claude-opus-5", alias="ANZOR_COPY_MODEL_ESCALATION"
-    )
+    copy_model_escalation: str = Field(default="claude-opus-5", alias="ANZOR_COPY_MODEL_ESCALATION")
 
     # ---- Pricing ----
     markup_amazon: Decimal = Field(default=Decimal("0.20"), alias="PRICE_MARKUP_AMAZON")
@@ -187,4 +188,4 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def settings() -> Settings:
     """Process-wide settings singleton."""
-    return Settings()  # type: ignore[call-arg]
+    return Settings()

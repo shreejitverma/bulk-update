@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 import structlog
 from pydantic import BaseModel, Field
@@ -141,7 +142,7 @@ class CopyGenerator:
         self._workhorse = settings.copy_model
         self._escalation = settings.copy_model_escalation
 
-    def _anthropic(self):  # type: ignore[no-untyped-def]
+    def _anthropic(self) -> Any:
         if self._client is None:
             import anthropic
 
@@ -163,8 +164,10 @@ class CopyGenerator:
         prefix stays byte-identical across the whole catalog."""
         cleaned = sanitize(product.long_description_raw)
 
-        details = "\n".join(f"- {row.label}: {row.value}" for row in product.specs) or \
-            "- (no structured item details were published for this product)"
+        details = (
+            "\n".join(f"- {row.label}: {row.value}" for row in product.specs)
+            or "- (no structured item details were published for this product)"
+        )
 
         sizes = ""
         if product.size_options:
@@ -220,9 +223,15 @@ traced to ITEM DETAILS, the correct fix is to remove that claim entirely, not to
                 result.model_used = model
                 try:
                     copy, usage = self._call(product, brand, model, feedback)
-                except Exception as exc:  # noqa: BLE001 — surface as a report entry, never crash a batch
-                    log.warning("copy.call_failed", sku=product.sku, model=model,
-                                attempt=attempt, error=str(exc))
+                # A failed call is surfaced as a report entry; it must never crash a batch.
+                except Exception as exc:  # noqa: BLE001
+                    log.warning(
+                        "copy.call_failed",
+                        sku=product.sku,
+                        model=model,
+                        attempt=attempt,
+                        error=str(exc),
+                    )
                     result.history.append(f"{model} attempt {attempt}: API error — {exc}")
                     feedback = ""
                     continue
@@ -243,25 +252,43 @@ traced to ITEM DETAILS, the correct fix is to remove that claim entirely, not to
                     result.copy = copy
                     result.elapsed_s = time.monotonic() - started
                     result.history.append(f"{model} attempt {attempt}: passed")
-                    log.info("copy.ok", sku=product.sku, model=model,
-                             attempts=result.attempts, escalated=result.escalated)
+                    log.info(
+                        "copy.ok",
+                        sku=product.sku,
+                        model=model,
+                        attempts=result.attempts,
+                        escalated=result.escalated,
+                    )
                     return result
 
                 feedback = report.feedback()
                 result.history.append(
                     f"{model} attempt {attempt}: {len(report.errors)} validation error(s)"
                 )
-                log.warning("copy.rejected", sku=product.sku, model=model, attempt=attempt,
-                            errors=[e.code for e in report.errors])
+                log.warning(
+                    "copy.rejected",
+                    sku=product.sku,
+                    model=model,
+                    attempt=attempt,
+                    errors=[e.code for e in report.errors],
+                )
 
             if model == self._workhorse and self._escalation != self._workhorse:
                 result.escalated = True
-                log.warning("copy.escalating", sku=product.sku,
-                            from_model=self._workhorse, to_model=self._escalation)
+                log.warning(
+                    "copy.escalating",
+                    sku=product.sku,
+                    from_model=self._workhorse,
+                    to_model=self._escalation,
+                )
 
         result.elapsed_s = time.monotonic() - started
-        log.error("copy.failed", sku=product.sku, attempts=result.attempts,
-                  errors=[e.code for e in result.report.errors])
+        log.error(
+            "copy.failed",
+            sku=product.sku,
+            attempts=result.attempts,
+            errors=[e.code for e in result.report.errors],
+        )
         return result
 
     def _call(
@@ -269,20 +296,24 @@ traced to ITEM DETAILS, the correct fix is to remove that claim entirely, not to
     ) -> tuple[ListingCopy, tuple[int, int, int]]:
         """One Messages API call. Returns the parsed copy and (input, output, cache_read) tokens."""
         client = self._anthropic()
-        response = client.messages.parse(  # type: ignore[union-attr]
+        response = client.messages.parse(
             model=model,
             max_tokens=8000,
-            system=[{
-                "type": "text",
-                "text": SYSTEM_PROMPT,
-                # The system prompt is byte-identical for every SKU in the catalog, so caching it
-                # turns a few thousand tokens per product into a ~0.1x cache read.
-                "cache_control": {"type": "ephemeral"},
-            }],
-            messages=[{
-                "role": "user",
-                "content": self.build_user_prompt(product, brand, feedback),
-            }],
+            system=[
+                {
+                    "type": "text",
+                    "text": SYSTEM_PROMPT,
+                    # The system prompt is byte-identical for every SKU in the catalog, so
+                    # caching it turns a few thousand tokens per product into a ~0.1x cache read.
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=[
+                {
+                    "role": "user",
+                    "content": self.build_user_prompt(product, brand, feedback),
+                }
+            ],
             output_format=ListingCopy,
         )
         usage = response.usage
@@ -305,7 +336,11 @@ def fallback_copy(product: Product, brand: str) -> ListingCopy:
     """
     attrs = product.attributes
     metal = " ".join(x for x in (attrs.metal_purity, attrs.metal_color, attrs.metal_type) if x)
-    gem = attrs.gemstones[0].type if attrs.gemstones else ""
+    stones: list[str] = []
+    for g in attrs.gemstones:
+        if g.type not in stones:
+            stones.append(g.type)
+    gem = " and ".join(stones)  # every stone the piece carries, not only the first
     title = " ".join(x for x in (brand, metal, gem, product.family.value) if x).strip()
 
     bullets = [f"{row.label}: {row.value}" for row in product.specs[:5]]
@@ -313,8 +348,7 @@ def fallback_copy(product: Product, brand: str) -> ListingCopy:
         bullets = [f"{product.family.value} by {brand}", f"Manufacturer SKU {product.sku}"]
 
     description = (
-        f"{title}. "
-        + " ".join(f"{row.label}: {row.value}." for row in product.specs[:8])
+        f"{title}. " + " ".join(f"{row.label}: {row.value}." for row in product.specs[:8])
     ).strip()
 
     return ListingCopy(

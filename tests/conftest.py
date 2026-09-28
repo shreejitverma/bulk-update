@@ -58,6 +58,7 @@ def settings(tmp_path: Path) -> Settings:
         ANZOR_DATA_DIR=tmp_path / "data",
         ANZOR_STATE_DB=tmp_path / "data" / "test.sqlite",
         ANZOR_WORKBOOK=tmp_path / "Product Listing.xlsx",
+        ANZOR_IMAGES_DIR=tmp_path / "images",
     )  # type: ignore[call-arg]
 
 

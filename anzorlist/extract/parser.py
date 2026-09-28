@@ -50,9 +50,26 @@ _ID_PRODUCT_INPUT_RE = re.compile(r'name=["\']?idProduct["\']?\s+value=["\']?(\d
 _CARAT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:ct|cts|cwt|carat)", re.IGNORECASE)
 
 GEM_TYPES = (
-    "Diamond", "Sapphire", "Ruby", "Emerald", "Pearl", "Topaz", "Amethyst", "Garnet",
-    "Aquamarine", "Opal", "Tanzanite", "Morganite", "Citrine", "Peridot", "Tourmaline",
-    "Onyx", "Turquoise", "Jade", "Moissanite", "Zircon",
+    "Diamond",
+    "Sapphire",
+    "Ruby",
+    "Emerald",
+    "Pearl",
+    "Topaz",
+    "Amethyst",
+    "Garnet",
+    "Aquamarine",
+    "Opal",
+    "Tanzanite",
+    "Morganite",
+    "Citrine",
+    "Peridot",
+    "Tourmaline",
+    "Onyx",
+    "Turquoise",
+    "Jade",
+    "Moissanite",
+    "Zircon",
 )
 
 
@@ -99,7 +116,7 @@ class ProductParser:
         return key
 
     def _warn(self, kind: str, field: str, detail: str) -> None:
-        self.warnings.append(ExtractionWarning(kind=kind, field=field, detail=detail))  # type: ignore[arg-type]
+        self.warnings.append(ExtractionWarning(kind=kind, field=field, detail=detail))
 
     # -- individual fields --
 
@@ -123,7 +140,10 @@ class ProductParser:
     def _title_element(self) -> Tag | None:
         """The marketing title: itemprop=name that is NOT inside an additionalProperty block."""
         for el in self.soup.find_all(attrs={"itemprop": "name"}):
-            if el.find_parent(attrs={"itemprop": "additionalProperty"}) is None:
+            if (
+                isinstance(el, Tag)
+                and el.find_parent(attrs={"itemprop": "additionalProperty"}) is None
+            ):
                 return el
         return self.soup.select_one("b.CPprodDescDet")
 
@@ -152,7 +172,7 @@ class ProductParser:
 
     def _description(self) -> str:
         el = self.soup.find(attrs={"itemprop": "description"})
-        if not el:
+        if not isinstance(el, Tag):
             self._warn("MissingField", "long_description_raw", "no itemprop=description")
             return ""
         for br in el.find_all("br"):
@@ -419,7 +439,7 @@ class ProductParser:
                 Gemstone(
                     type=gtype,
                     genuine=genuine,
-                    origin=origin,  # type: ignore[arg-type]
+                    origin=origin,
                     treatment=treatment,
                     carat_weight=carat,
                     shape_cut=shape,
@@ -489,9 +509,7 @@ class ProductParser:
                         except InvalidOperation:
                             value = None
                     unit = "in" if axis in {"chain_length", "bracelet_length", "length"} else None
-                    key = self._prov(
-                        f"size_options[{opt_id}]", f"OPTidOption{gid} ({des})", text
-                    )
+                    key = self._prov(f"size_options[{opt_id}]", f"OPTidOption{gid} ({des})", text)
                     variations.append(
                         Variation(
                             axis=axis or "option",

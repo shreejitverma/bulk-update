@@ -44,11 +44,11 @@ class LwaError(RuntimeError):
     def __init__(self, status: int, code: str, description: str) -> None:
         hint = {
             "invalid_client": "SPAPI_LWA_CLIENT_ID / SPAPI_LWA_CLIENT_SECRET do not match a "
-                              "registered SP-API application.",
+            "registered SP-API application.",
             "invalid_grant": "The refresh token is revoked, expired, or was issued for a "
-                             "different application. Re-run the self-authorization flow.",
+            "different application. Re-run the self-authorization flow.",
             "unauthorized_client": "The application is not authorized for this grant type — "
-                                   "check the app's role selection in Seller Central.",
+            "check the app's role selection in Seller Central.",
         }.get(code, "")
         super().__init__(f"LWA {status} {code}: {description}. {hint}".strip())
         self.status = status
@@ -137,6 +137,10 @@ class TokenProvider:
     def close(self) -> None:
         if self._owns_client:
             self._client.close()
+
+    def close_client(self) -> None:
+        """Close the HTTP client even when it was injected by the owner of this provider."""
+        self._client.close()
 
     def __repr__(self) -> str:  # never let a token reach a traceback or log line
         return f"<TokenProvider regions={sorted(r.value for r in self._cache)}>"

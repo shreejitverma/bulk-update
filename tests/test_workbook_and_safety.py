@@ -117,11 +117,15 @@ class TestListingRow:
 
 def _listing(sku: str = "R985", payload_hash: str = "abc123") -> BuiltListing:
     return BuiltListing(
-        sku=sku, source_sku=sku,
-        marketplace_id="ATVPDKIKX0DER", marketplace_code="US",
-        product_type="RING", attributes={"brand": [{"value": "Anzor"}]},
+        sku=sku,
+        source_sku=sku,
+        marketplace_id="ATVPDKIKX0DER",
+        marketplace_code="US",
+        product_type="RING",
+        attributes={"brand": [{"value": "Anzor"}]},
         offer=OfferTerms(price=Decimal("1250.00")),
-        payload_hash=payload_hash, content_hash="0" * 64,
+        payload_hash=payload_hash,
+        content_hash="0" * 64,
     )
 
 
@@ -143,10 +147,17 @@ class TestLedger:
             listing = _listing()
             ledger.record_listing(listing)
             ledger.start_run("r1", "submit", "SUBMIT")
-            ledger.record_submission(SubmissionOutcome(
-                sku=listing.sku, marketplace_id=listing.marketplace_id, marketplace_code="US",
-                mode="SUBMIT", status=ListingStatus.ACCEPTED, payload_hash=listing.payload_hash,
-            ), "r1")
+            ledger.record_submission(
+                SubmissionOutcome(
+                    sku=listing.sku,
+                    marketplace_id=listing.marketplace_id,
+                    marketplace_code="US",
+                    mode="SUBMIT",
+                    status=ListingStatus.ACCEPTED,
+                    payload_hash=listing.payload_hash,
+                ),
+                "r1",
+            )
             assert ledger.needs_submission(listing) is False
 
     def test_changed_payload_is_resubmitted(self, tmp_path: Path):
@@ -154,10 +165,17 @@ class TestLedger:
             first = _listing(payload_hash="hash-v1")
             ledger.record_listing(first)
             ledger.start_run("r1", "submit", "SUBMIT")
-            ledger.record_submission(SubmissionOutcome(
-                sku=first.sku, marketplace_id=first.marketplace_id, marketplace_code="US",
-                mode="SUBMIT", status=ListingStatus.ACCEPTED, payload_hash="hash-v1",
-            ), "r1")
+            ledger.record_submission(
+                SubmissionOutcome(
+                    sku=first.sku,
+                    marketplace_id=first.marketplace_id,
+                    marketplace_code="US",
+                    mode="SUBMIT",
+                    status=ListingStatus.ACCEPTED,
+                    payload_hash="hash-v1",
+                ),
+                "r1",
+            )
             assert ledger.needs_submission(_listing(payload_hash="hash-v2")) is True
 
     def test_live_skus_is_the_rollback_list(self, tmp_path: Path):
@@ -165,10 +183,17 @@ class TestLedger:
             listing = _listing()
             ledger.record_listing(listing)
             ledger.start_run("r1", "submit", "SUBMIT")
-            ledger.record_submission(SubmissionOutcome(
-                sku=listing.sku, marketplace_id=listing.marketplace_id, marketplace_code="US",
-                mode="SUBMIT", status=ListingStatus.SUBMITTED, payload_hash=listing.payload_hash,
-            ), "r1")
+            ledger.record_submission(
+                SubmissionOutcome(
+                    sku=listing.sku,
+                    marketplace_id=listing.marketplace_id,
+                    marketplace_code="US",
+                    mode="SUBMIT",
+                    status=ListingStatus.SUBMITTED,
+                    payload_hash=listing.payload_hash,
+                ),
+                "r1",
+            )
             assert [e.sku for e in ledger.live_skus()] == ["R985"]
 
     def test_validation_preview_does_not_mark_a_listing_live(self, tmp_path: Path):
@@ -177,11 +202,17 @@ class TestLedger:
             listing = _listing()
             ledger.record_listing(listing)
             ledger.start_run("r1", "validate", "VALIDATION_PREVIEW")
-            ledger.record_submission(SubmissionOutcome(
-                sku=listing.sku, marketplace_id=listing.marketplace_id, marketplace_code="US",
-                mode="VALIDATION_PREVIEW", status=ListingStatus.VALIDATED,
-                payload_hash=listing.payload_hash,
-            ), "r1")
+            ledger.record_submission(
+                SubmissionOutcome(
+                    sku=listing.sku,
+                    marketplace_id=listing.marketplace_id,
+                    marketplace_code="US",
+                    mode="VALIDATION_PREVIEW",
+                    status=ListingStatus.VALIDATED,
+                    payload_hash=listing.payload_hash,
+                ),
+                "r1",
+            )
             assert ledger.live_skus() == []
             assert ledger.needs_submission(listing) is True
 
@@ -247,9 +278,16 @@ class TestLiveWriteGates:
     def test_amazon_reported_errors_become_a_failed_outcome(self, settings, us):
         client, transport = self._client(settings)
         transport.request.return_value.json = {
-            "sku": "R985", "status": "INVALID",
-            "issues": [{"code": "90220", "message": "brand is required",
-                        "severity": "ERROR", "attributeNames": ["brand"]}],
+            "sku": "R985",
+            "status": "INVALID",
+            "issues": [
+                {
+                    "code": "90220",
+                    "message": "brand is required",
+                    "severity": "ERROR",
+                    "attributeNames": ["brand"],
+                }
+            ],
         }
         transport.request.return_value.request_id = "req-3"
         transport.request.return_value.status = 200
@@ -262,10 +300,31 @@ class TestLiveWriteGates:
         """Fail closed: an unrecognised severity must never be silently ignored."""
         client, transport = self._client(settings)
         transport.request.return_value.json = {
-            "sku": "R985", "status": "ACCEPTED",
+            "sku": "R985",
+            "status": "ACCEPTED",
             "issues": [{"code": "X", "message": "?", "severity": "MYSTERY"}],
         }
         transport.request.return_value.request_id = "req-4"
         transport.request.return_value.status = 200
         outcome = client.put(_listing(), us, mode="VALIDATION_PREVIEW")
         assert outcome.issues[0].blocking is True
+
+
+def test_env_example_only_names_variables_the_config_reads() -> None:
+    """A misnamed variable in .env.example is silently ignored, and the operator then gets a
+    'missing credential' error for a credential they did set."""
+    from pathlib import Path
+
+    from anzorlist.config import Settings
+
+    known = {f.alias for f in Settings.model_fields.values() if f.alias}
+    example = Path(__file__).parents[1] / ".env.example"
+    named = {
+        line.lstrip("# ").split("=", 1)[0].strip()
+        for line in example.read_text().splitlines()
+        if "=" in line and line.lstrip("# ")[:1].isupper()
+    }
+    # eBay and Etsy settings are read by their channel modules, not by Settings.
+    channel_prefixes = ("EBAY_", "ETSY_")
+    unknown = sorted(v for v in named if v not in known and not v.startswith(channel_prefixes))
+    assert unknown == []

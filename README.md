@@ -38,7 +38,7 @@ anzorlist doctor              # what's configured, what's missing, and how to fi
 anzorlist workbook init       # generates Product Listing.xlsx
 # → fill in the SKU column. Hover any header for what it does.
 anzorlist workbook validate   # every error at once, with cell references
-anzorlist build               # payloads land in data/build/
+anzorlist build               # payloads land in data/build/<marketplace>/<SKU>/
 ```
 
 `build` needs no Amazon credentials. That's deliberate — the payload on disk is the thing you
@@ -82,10 +82,15 @@ flag nor a stale config value can cause a write alone.
 | `build [SKUS...]` | Anzor site, Anthropic, R2 | Extract → copy → price → map → schema-check |
 | `amazon preflight` | SP-API (read) | Marketplace registration and category gating |
 | `amazon sync-schemas` | SP-API (read) | Cache Amazon's JSON schemas for offline validation |
-| `amazon validate` | SP-API (dry run) | Amazon validates the payload and creates nothing |
-| `amazon submit --confirm` | SP-API (**write**) | Creates listings |
+| `amazon validate [SKUS...]` | SP-API (dry run) | Amazon validates the payload and creates nothing |
+| `amazon submit --confirm` | SP-API (**write**) | Creates listings, one previewed call per listing |
+| `amazon submit --confirm --feed` | SP-API (**write**) | Bulk: parents per item, the rest in `JSON_LISTINGS_FEED` documents |
+| `amazon feed-status [FEED_ID]` | SP-API (read) | Reconcile a bulk feed's per-listing results into the ledger; no id lists unreconciled feeds |
 | `amazon status [SKU]` | none | Ledger state and submission history |
 | `amazon delete --confirm` | SP-API (**write**) | Remove an offer |
+
+Exit codes: `0` done, `1` something failed or was blocked, `2` refused by a safety gate or bad setup,
+`3` accepted by Amazon but the result is not known yet (reconcile with `amazon feed-status`).
 
 ## The workbook
 
@@ -111,7 +116,8 @@ anzorlist/
   extract/             site client (throttle, cache, encoding) + provenance-tracking parser
   generate/            sanitize → generate → validate; escalation on validator failure
   media/               download, Amazon-requirement checks, R2 hosting
-  channels/amazon/     auth, rate-limited transport, definitions, preflight, listings, feeds, mapper
+  channels/amazon/     auth, rate-limited transport, definitions, preflight, listings, feeds, mapper,
+                       build artifacts on disk, submission planning
   store/               SQLite submission ledger
 docs/RUNBOOK.md        SP-API registration, GTIN exemption, first live listing
 ```
@@ -119,13 +125,18 @@ docs/RUNBOOK.md        SP-API registration, GTIN exemption, first live listing
 ## Tests
 
 ```bash
-uv run pytest          # 113 tests, no network, no credentials
+uv run pytest          # no network, no credentials
 ```
 
 The suite runs entirely against four committed HTML fixtures. The safety-critical tests are the
 FTC claim checks in `test_copy_guards.py` and the live-write gates in
 `test_workbook_and_safety.py` — those assert the system *refuses* to act, which is the kind of
 regression that fails silently.
+
+`test_amazon_upload_e2e.py` drives the real CLI from `build` through `validate`, `submit`, and
+`feed-status` against a fake Amazon (`tests/fake_amazon.py`) that speaks LWA, Listings Items,
+Feeds, and presigned S3 in Amazon's documented shapes, so the whole upload path is exercised
+before a live account exists.
 
 ## Status
 
