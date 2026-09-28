@@ -37,6 +37,7 @@ from anzorlist.store.db import Ledger, new_run_id
 
 if TYPE_CHECKING:
     from anzorlist.channels.amazon.client import ClientPool
+    from anzorlist.channels.ebay.client import EbayClient
 
 app = typer.Typer(
     name="anzorlist",
@@ -50,6 +51,8 @@ workbook_app = typer.Typer(
 amazon_app = typer.Typer(help="Amazon SP-API operations.", no_args_is_help=True)
 app.add_typer(workbook_app, name="workbook")
 app.add_typer(amazon_app, name="amazon")
+ebay_app = typer.Typer(help="eBay Sell API operations.", no_args_is_help=True)
+app.add_typer(ebay_app, name="ebay")
 
 console = Console()
 err_console = Console(stderr=True)
@@ -306,7 +309,8 @@ def build(
             pipeline.close()
 
     _print_build_report(report, s)
-    if len(report.submittable) < len(report.listings):
+    ebay_blocked = any(b.ebay is not None and not b.ebay.submittable for b in report.builds)
+    if len(report.submittable) < len(report.listings) or ebay_blocked:
         raise typer.Exit(1)
 
 
@@ -317,6 +321,7 @@ def _print_build_report(report: BuildReport, s: Settings) -> None:
     table.add_column("Images", justify="right")
     table.add_column("Copy", overflow="fold")
     table.add_column("Status", overflow="fold")
+    table.add_column("eBay", overflow="fold")
 
     for b in report.builds:
         if b.errors:
@@ -333,7 +338,15 @@ def _print_build_report(report: BuildReport, s: Settings) -> None:
             else:
                 status = "[green]ready[/]"
         copy_note = b.copy_model + (" [yellow](escalated)[/]" if b.copy_escalated else "")
-        table.add_row(b.sku, str(len(b.listings)), str(b.hosted_images), copy_note, status)
+        if b.ebay is None:
+            ebay_note = "-"
+        elif b.ebay.submittable:
+            ebay_note = "[green]ready[/]"
+        else:
+            ebay_note = f"[red]blocked[/]: {b.ebay.blocking_issues[0].code}"
+        table.add_row(
+            b.sku, str(len(b.listings)), str(b.hosted_images), copy_note, status, ebay_note
+        )
 
     console.print(table)
     c = report.counts()
@@ -862,6 +875,162 @@ def amazon_delete(
             ledger.finish_run(run_id, {"deleted": deleted, "failed": failed})
     if failed:
         raise typer.Exit(1)
+
+
+# =====================================================================  ebay
+
+
+def _make_ebay_client(s: Settings) -> EbayClient:
+    """Construct the eBay client. A seam: the end-to-end tests swap in a fake eBay."""
+    from anzorlist.channels.ebay.client import EbayClient
+
+    return EbayClient(s)
+
+
+def _ebay_client_and_settings() -> tuple[EbayClient, Settings]:
+    s = get_settings()
+    try:
+        s.ebay_credentials()
+    except MissingCredential as exc:
+        err_console.print(Panel.fit(f"[red]{exc}[/]", title="eBay credentials required"))
+        raise typer.Exit(2) from exc
+    return _make_ebay_client(s), s
+
+
+@ebay_app.command("setup")
+def ebay_setup() -> None:
+    """List your eBay business policies and inventory locations, to fill in .env."""
+    client, s = _ebay_client_and_settings()
+    try:
+        for kind, key in (
+            ("fulfillment_policy", "fulfillmentPolicies"),
+            ("payment_policy", "paymentPolicies"),
+            ("return_policy", "returnPolicies"),
+        ):
+            _, body = client.request(
+                "GET", f"/sell/account/v1/{kind}", params={"marketplace_id": client.marketplace_id}
+            )
+            table = Table(title=f"EBAY_{kind.upper()}_ID candidates")
+            table.add_column("Id")
+            table.add_column("Name")
+            for p in (body or {}).get(key, []) or []:
+                table.add_row(str(p.get(f"{kind.split('_')[0]}PolicyId", "")), str(p.get("name")))
+            console.print(table)
+        _, body = client.request("GET", "/sell/inventory/v1/location")
+        table = Table(title="EBAY_MERCHANT_LOCATION_KEY candidates")
+        table.add_column("Key")
+        table.add_column("Name")
+        for loc in (body or {}).get("locations", []) or []:
+            table.add_row(str(loc.get("merchantLocationKey")), str(loc.get("name", "")))
+        console.print(table)
+    finally:
+        client.close()
+
+
+@ebay_app.command("submit")
+def ebay_submit(
+    skus: Annotated[
+        list[str] | None, typer.Argument(help="Website SKUs; default: workbook.")
+    ] = None,
+    confirm: Annotated[
+        bool, typer.Option("--confirm", help="Required. Publishes listings.")
+    ] = False,
+) -> None:
+    """Stage and publish eBay listings, in bulk. Writes to the eBay account."""
+    from anzorlist.channels.amazon.artifacts import ArtifactError
+    from anzorlist.channels.ebay import artifacts as ebay_artifacts
+    from anzorlist.channels.ebay.publish import EbayPublisher
+
+    s = get_settings()
+    if not (confirm and s.allow_live):
+        err_console.print(
+            Panel.fit(
+                "[red]Publishing needs both --confirm and ANZOR_ALLOW_LIVE=true.[/]",
+                title="refusing to publish",
+            )
+        )
+        raise typer.Exit(2)
+    try:
+        s.ebay_listing_policies()
+    except MissingCredential as exc:
+        err_console.print(f"[red]{exc}[/]")
+        raise typer.Exit(2) from exc
+
+    try:
+        built = ebay_artifacts.load_all(s.data_dir)
+    except ArtifactError as exc:
+        err_console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
+    wanted = {k.upper() for k in skus} if skus else _included_skus(s)
+    selected = [x for x in built if x.source_sku.upper() in wanted]
+    if not selected:
+        err_console.print("[red]No built eBay listings selected.[/] Run `anzorlist build` first.")
+        raise typer.Exit(1)
+
+    blocked = [x for x in selected if not x.submittable]
+    for x in blocked:
+        first = x.blocking_issues[0]
+        console.print(f"[red]blocked[/] {x.source_sku}: {first.code}: {first.message}")
+
+    client = _make_ebay_client(s)
+    outcomes: list[SubmissionOutcome] = []
+    try:
+        with Ledger(s.state_db) as ledger:
+            ready = [x for x in selected if x.submittable]
+            send = [x for x in ready if ledger.needs_submission(x)]
+            if len(ready) > len(send):
+                console.print(f"[dim]{len(ready) - len(send)} unchanged since last publish.[/]")
+            if not send:
+                if blocked:
+                    raise typer.Exit(1)
+                console.print("[green]Everything is already up to date.[/]")
+                return
+            console.print(f"\n[bold yellow]About to publish {len(send)} eBay listing(s):[/]")
+            for x in send[:10]:
+                kind = f"{len(x.items)} sizes" if x.is_group else "single"
+                console.print(
+                    f"  {x.source_sku:<12} {kind:<10} from {x.currency} {x.items[0].price}"
+                )
+            if not typer.confirm("\nProceed?", default=False):
+                console.print("Aborted. Nothing was sent.")
+                raise typer.Exit(0)
+            run_id = new_run_id("ebay-submit")
+            ledger.start_run(run_id, "ebay submit", mode="SUBMIT")
+            publisher = EbayPublisher(client, s)
+            try:
+                for listing in send:
+                    outcome = publisher.submit(listing, confirm=True)
+                    ledger.record_submission(outcome, run_id)
+                    outcomes.append(outcome)
+            finally:
+                ledger.finish_run(
+                    run_id,
+                    {
+                        "published": sum(1 for o in outcomes if o.accepted),
+                        "failed": sum(1 for o in outcomes if not o.accepted),
+                        "blocked": len(blocked),
+                    },
+                )
+                if outcomes:
+                    _print_outcomes(outcomes, f"eBay {run_id}")
+    finally:
+        client.close()
+    if blocked or any(not o.accepted for o in outcomes):
+        raise typer.Exit(1)
+
+
+def _included_skus(s: Settings) -> set[str]:
+    """Website SKUs the workbook currently includes. Fails closed without a workbook."""
+    if not s.workbook_path.exists():
+        err_console.print(
+            f"[red]Workbook {s.workbook_path} not found.[/] Name the SKUs explicitly."
+        )
+        raise typer.Exit(2)
+    result = read_workbook(s.workbook_path)
+    if result.errors:
+        err_console.print("[red]The workbook has errors.[/] Run `anzorlist workbook validate`.")
+        raise typer.Exit(1)
+    return {r.sku.upper() for r in result.included()}
 
 
 def _print_outcomes(outcomes: list[SubmissionOutcome], title: str) -> None:

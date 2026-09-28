@@ -37,12 +37,15 @@ from anzorlist.channels.amazon.definitions import (
     validate_attributes,
 )
 from anzorlist.channels.amazon.mapper import AmazonMapper
+from anzorlist.channels.ebay import artifacts as ebay_artifacts
+from anzorlist.channels.ebay.mapper import EbayMapper
+from anzorlist.channels.ebay.models import EbayListing
 from anzorlist.config import Settings
 from anzorlist.extract.client import SiteClient
 from anzorlist.extract.parser import parse_product
 from anzorlist.generate.copy import CopyGenerator, ListingCopy, fallback_copy
 from anzorlist.ingest.row import ListingRow
-from anzorlist.marketplaces import Marketplace, resolve_all
+from anzorlist.marketplaces import Marketplace, resolve, resolve_all
 from anzorlist.media.pipeline import MediaPipeline
 from anzorlist.models.listing import BuiltListing, IssueSeverity, ListingIssue, ListingStatus
 from anzorlist.models.product import Product
@@ -63,6 +66,7 @@ class BuildOptions:
     force_refetch: bool = False  # ignore the raw HTML cache
     fx_rates: dict[str, str] = field(default_factory=dict)  # marketplace code -> USD rate
     charm_pricing: bool = False
+    channels: set[str] | None = None  # None: ANZOR_CHANNELS
 
 
 @dataclass
@@ -76,6 +80,7 @@ class SkuBuild:
     copy_escalated: bool = False
     copy_model: str = ""
     hosted_images: int = 0
+    ebay: EbayListing | None = None
 
     @property
     def ok(self) -> bool:
@@ -131,17 +136,22 @@ class BuildPipeline:
         )
         self.media = MediaPipeline(settings)
         self.mapper = AmazonMapper(settings)
+        self.ebay_mapper = EbayMapper(settings)
         self.definitions = definitions or DefinitionsClient(None, settings.schema_cache_dir)
         self._copy_gen: CopyGenerator | None = None
 
     # ------------------------------------------------------------------ per-row
 
     def build_row(self, row: ListingRow, options: BuildOptions) -> SkuBuild:
-        build = self._build_row(row, options)
-        self._write_artifacts(row, build)
+        channels = self._channels(options)
+        build = self._build_row(row, options, channels)
+        self._write_artifacts(row, build, channels)
         return build
 
-    def _build_row(self, row: ListingRow, options: BuildOptions) -> SkuBuild:
+    def _channels(self, options: BuildOptions) -> set[str]:
+        return options.channels if options.channels is not None else self.settings.channel_set()
+
+    def _build_row(self, row: ListingRow, options: BuildOptions, channels: set[str]) -> SkuBuild:
         build = SkuBuild(sku=row.sku)
 
         # --- 2. extract ---
@@ -179,7 +189,7 @@ class BuildPipeline:
         build.copy_model = model_used
 
         # --- 5 & 6. price + map, per marketplace ---
-        markets = self._markets_for(row)
+        markets = self._markets_for(row) if "amazon" in channels else []
         for marketplace in markets:
             try:
                 quote = price_for(
@@ -220,7 +230,33 @@ class BuildPipeline:
 
             build.listings.extend(listings)
 
+        if "ebay" in channels:
+            build.ebay = self._build_ebay(product, row, copy_obj, image_urls, build)
         return build
+
+    def _build_ebay(
+        self,
+        product: Product,
+        row: ListingRow,
+        copy_obj: ListingCopy,
+        image_urls: list[str],
+        build: SkuBuild,
+    ) -> EbayListing | None:
+        """One eBay listing page, priced with eBay's own fee gross-up (US only for now)."""
+        try:
+            quote = price_for(
+                product.pricing.our_price.amount if product.pricing.our_price else None,
+                resolve("US"),
+                fee_fraction=self.settings.markup_ebay,
+                override=row.price_override_usd,
+                floor=self.settings.price_floor,
+            )
+        except PricingError as exc:
+            build.errors.append(f"eBay: {exc}")
+            return None
+        return self.ebay_mapper.build(
+            product=product, row=row, copy=copy_obj, quote=quote, image_urls=image_urls
+        )
 
     # ------------------------------------------------------------------ batch
 
@@ -325,14 +361,19 @@ class BuildPipeline:
             else ListingStatus.SCHEMA_OK
         )
 
-    def _write_artifacts(self, row: ListingRow, build: SkuBuild) -> None:
+    def _write_artifacts(self, row: ListingRow, build: SkuBuild, channels: set[str]) -> None:
         """Replace this SKU's artifacts. The files on disk always equal the latest build.
 
         The SKU is cleared in every marketplace first - including one that failed this time and one
         the row no longer names - so a payload from an earlier build can never be submitted.
         """
-        clear_family(self.settings.build_dir, row.sku)
-        write_listings(self.settings.build_dir, build.listings)
+        if "amazon" in channels:
+            clear_family(self.settings.build_dir, row.sku)
+            write_listings(self.settings.build_dir, build.listings)
+        if "ebay" in channels:
+            ebay_artifacts.clear(self.settings.data_dir, row.sku)
+            if build.ebay is not None:
+                ebay_artifacts.write(self.settings.data_dir, build.ebay)
 
     # ------------------------------------------------------------------ helpers
 

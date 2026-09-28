@@ -68,6 +68,11 @@ class EbayListing(BaseModel):
     built_at: datetime | None = None
 
     @property
+    def sku(self) -> str:
+        """The ledger key: one eBay listing page per website SKU."""
+        return self.source_sku
+
+    @property
     def is_group(self) -> bool:
         return self.group_key is not None
 

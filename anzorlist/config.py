@@ -99,6 +99,8 @@ class Settings(BaseSettings):
     seller_id_fe: str | None = Field(default=None, alias="SPAPI_SELLER_ID_FE")
 
     marketplaces: str = Field(default="US", alias="ANZOR_MARKETPLACES")
+    # Which channels `anzorlist build` produces listings for: amazon, ebay, etsy.
+    channels: str = Field(default="amazon,ebay", alias="ANZOR_CHANNELS")
     use_sandbox: bool = Field(default=False, alias="SPAPI_SANDBOX")
 
     # ---- eBay Sell APIs (Inventory + Account + Taxonomy) ----
@@ -202,6 +204,9 @@ class Settings(BaseSettings):
                     var, "Run `anzorlist ebay setup` to list your business policies and locations."
                 )
         return {k: str(v) for k, v in required.items()}
+
+    def channel_set(self) -> set[str]:
+        return {c.strip().lower() for c in self.channels.split(",") if c.strip()}
 
     def has_spapi_credentials(self) -> bool:
         """True when a live call could at least be attempted. Used to pick offline mode."""

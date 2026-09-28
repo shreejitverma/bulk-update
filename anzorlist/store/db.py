@@ -27,7 +27,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 import structlog
 
@@ -38,6 +38,20 @@ log = structlog.get_logger(__name__)
 SCHEMA_VERSION = 1
 
 SubmissionState = Literal["new", "changed", "accepted", "in_flight", "failed"]
+
+
+class SubmissionKey(Protocol):
+    """What the ledger needs to know about any channel's listing to decide what to resend."""
+
+    @property
+    def sku(self) -> str: ...
+
+    @property
+    def marketplace_id(self) -> str: ...
+
+    @property
+    def payload_hash(self) -> str: ...
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -190,7 +204,7 @@ class Ledger:
                 ),
             )
 
-    def submission_state(self, listing: BuiltListing) -> SubmissionState:
+    def submission_state(self, listing: SubmissionKey) -> SubmissionState:
         """Where this exact payload stands with Amazon, from the last live write for its SKU.
 
         The comparison is on the payload hash, not on a timestamp: a rebuild that produces
@@ -216,7 +230,7 @@ class Ledger:
             return "in_flight"  # inside a feed that has not been reconciled
         return "failed"
 
-    def needs_submission(self, listing: BuiltListing) -> bool:
+    def needs_submission(self, listing: SubmissionKey) -> bool:
         """True when this exact payload is neither accepted nor already in flight."""
         return self.submission_state(listing) in ("new", "changed", "failed")
 
