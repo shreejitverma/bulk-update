@@ -378,3 +378,30 @@ Categories are Fine Rings 261994, Fine Earrings 261990, Fine Necklaces & Pendant
 eBay validates item specifics when it publishes; a rejection names the missing specific (for example `Metal`), and the workbook's attribute columns set it.
 Rerunning after a rejection updates the existing offers rather than creating duplicates.
 
+---
+
+## Etsy
+
+Etsy takes photo files directly, so it needs no image hosting, but it does need operator photos of at least Etsy's recommended size in `images/<SKU>/`.
+
+1. **App.** [etsy.com/developers](https://www.etsy.com/developers) → Create a New App.
+   The keystring is `ETSY_API_KEY`, the shared secret is `ETSY_SHARED_SECRET`.
+2. **Authorize the shop** with OAuth 2 (PKCE) for the scopes `listings_r listings_w shops_r`, and put the refresh token in `ETSY_REFRESH_TOKEN`.
+   Etsy rotates the refresh token on every use; the tool saves each new one to `data/etsy/token.json` (mode 0600) and uses it from then on.
+   If that file is lost, authorize again and replace `ETSY_REFRESH_TOKEN`.
+3. **Shop settings.** Your numeric shop id is `ETSY_SHOP_ID`.
+   Create a shipping profile and a return policy in Shop Manager and set `ETSY_SHIPPING_PROFILE_ID` and `ETSY_RETURN_POLICY_ID`.
+   If Etsy asks for a processing profile, set `ETSY_READINESS_STATE_ID`.
+4. **Publish:**
+
+```bash
+anzorlist build                        # writes data/etsy/build/<SKU>.json
+anzorlist etsy submit --confirm R985   # one SKU first; ANZOR_ALLOW_LIVE=true is required too
+```
+
+Each activation incurs Etsy's listing fee.
+Taxonomy ids come from Etsy's own seller taxonomy (Jewelry > Rings, Earrings, Necklaces, Bracelets) at run time.
+Ring sizes become inventory products on one listing, each with its own price and SKU.
+Each SKU's `listing_id` and uploaded photos are recorded in `data/etsy/listings.json`, so a rerun after any failure updates the same listing and never uploads a photo twice.
+Do not delete that file while listings exist; without it the next run would create duplicates.
+

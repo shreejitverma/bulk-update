@@ -88,6 +88,7 @@ flag nor a stale config value can cause a write alone.
 | `amazon feed-status [FEED_ID]` | SP-API (read) | Reconcile a bulk feed's per-listing results into the ledger; no id lists unreconciled feeds |
 | `ebay setup` | eBay (read) | List business policy ids and inventory locations for `.env` |
 | `ebay submit --confirm [SKUS...]` | eBay (**write**) | Bulk-stage items and offers, then publish; idempotent on rerun |
+| `etsy submit --confirm [SKUS...]` | Etsy (**write**) | Create or update, upload photos, set sizes, activate; idempotent on rerun |
 | `amazon status [SKU]` | none | Ledger state and submission history |
 | `amazon delete --confirm` | SP-API (**write**) | Remove an offer |
 
@@ -147,4 +148,6 @@ live account — SP-API developer registration is pending. See `docs/RUNBOOK.md`
 
 eBay is implemented (`channels/ebay/`): `build` writes `data/ebay/build/<SKU>.json` when
 `ANZOR_CHANNELS` includes `ebay`, and `ebay submit` stages and publishes through the Inventory
-API. Setup is in `docs/RUNBOOK.md`. Etsy is next.
+API. Etsy is implemented (`channels/etsy/`): `build` writes `data/etsy/build/<SKU>.json`, and
+`etsy submit` creates or updates each listing, uploads its photos as files (no image hosting
+needed), sets sizes as inventory, and activates it. Setup for both is in `docs/RUNBOOK.md`.
