@@ -401,7 +401,13 @@ def _select_built(
         )
 
     rows: list[ListingRow] | None = None
-    if not skus and s.workbook_path.exists():
+    if not skus:
+        if not s.workbook_path.exists():
+            err_console.print(
+                f"[red]Workbook not found: {s.workbook_path}.[/] Without it there is no list of "
+                "included rows to act on; name the SKUs explicitly."
+            )
+            raise typer.Exit(2)
         result = read_workbook(s.workbook_path)
         if result.errors:
             err_console.print(
@@ -566,7 +572,8 @@ def amazon_submit(
         typer.Option("--skip-validate", help="Per-item mode: skip the preview before each write."),
     ] = False,
     preview_sample: Annotated[
-        int, typer.Option(help="Feed mode: listings per marketplace previewed before sending.")
+        int,
+        typer.Option(min=1, help="Feed mode: listings per marketplace previewed before sending."),
     ] = 5,
     wait: Annotated[
         bool, typer.Option("--wait/--no-wait", help="Feed mode: wait for Amazon's report.")
@@ -612,7 +619,9 @@ def amazon_submit(
             if plan.orphaned:
                 console.print(
                     f"[yellow]{len(plan.orphaned)} listing(s) not sent because the rest of "
-                    f"their variation family is blocked.[/]"
+                    f"their variation family is blocked, or their parent is not on Amazon yet "
+                    f"(submit the parent too):[/] "
+                    + ", ".join(f"{x.sku} ({x.marketplace_code})" for x in plan.orphaned)
                 )
             if plan.unchanged:
                 console.print(

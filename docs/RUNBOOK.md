@@ -256,13 +256,14 @@ problem shows up identically on every SKU, and finding it in a dry run costs not
 
 With no SKUs named, `validate` and `submit` act on the workbook rows with Include = Y, in the marketplaces each row names.
 A row set to N is never sent, even though its old build is still on disk.
+If the workbook file is missing, both refuse (exit 2); name the SKUs explicitly instead.
 Before anything is written, `submit` sorts every listing into one bucket and prints the counts:
 
 | Bucket | Meaning |
 |---|---|
 | sent | Will be written, parents before children |
 | blocked | The build found a blocking problem (no image, schema error); fix it and rebuild |
-| family blocked | A child whose parent is blocked, or a parent whose children all are |
+| family blocked | A child whose parent is blocked or not yet on Amazon (submit the parent too), or a parent whose children all are |
 | unchanged | This exact payload was already accepted; nothing to do |
 | in flight | This exact payload is in a feed that has not been reconciled yet |
 
@@ -278,8 +279,8 @@ For hundreds of listings or more, use the Feeds API:
 anzorlist amazon submit --confirm --feed
 ```
 
-1. Variation parents go first through the per-item path, because children cannot attach until their parent exists.
-2. Up to 5 listings per marketplace (one per product first) are previewed; if any fails, that marketplace's feed is not sent.
+1. Up to 5 non-parent listings per marketplace (one per product first) are previewed; if any fails, nothing in that marketplace is written, parents included.
+2. Variation parents then go through the per-item path, because children cannot attach until their parent exists.
 3. The rest go in `JSON_LISTINGS_FEED` documents, one marketplace per feed, split at 5,000 messages or 8 MB.
 4. The tool waits for Amazon's processing report and records each listing's result in the ledger.
 

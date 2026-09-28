@@ -396,7 +396,8 @@ def reconcile(result: FeedResult, manifest: FeedManifest) -> list[SubmissionOutc
             unattributed.append(issue)
 
     feed_failed = result.processing_status != "DONE" or result.report is None
-    mismatch = "" if feed_failed or unattributed else _summary_mismatch(result, manifest, by_id)
+    rejects_all = feed_failed or any(i.blocking for i in unattributed)
+    mismatch = "" if rejects_all else _summary_mismatch(result, manifest, by_id)
     outcomes: list[SubmissionOutcome] = []
     for message in manifest.messages:
         issues = list(by_id.get(message.message_id, []))

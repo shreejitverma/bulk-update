@@ -8,8 +8,9 @@ Planning (:func:`plan_submission`) sorts every selected listing into exactly one
 * ``send``       - will be written.
 * ``blocked``    - the local checks already found a blocking problem (no image, schema error).
                    Sending it would create a listing Amazon suppresses, or fail anyway.
-* ``orphaned``   - a variation child whose parent is blocked (Amazon cannot attach it), or a
-                   parent all of whose children are blocked (it would be an empty page).
+* ``orphaned``   - a variation child whose parent is blocked, or is neither accepted on Amazon
+                   nor sent in this run (Amazon cannot attach it), or a parent all of whose
+                   children are blocked (it would be an empty page).
 * ``unchanged``  - this exact payload was already accepted.
 * ``in_flight``  - this exact payload is inside a feed that has not been reconciled yet.
 
@@ -17,9 +18,10 @@ Execution has two paths with identical safety gates:
 
 * :meth:`AmazonSubmitter.submit_items` - Listings Items, one SKU at a time, each previewed with
   VALIDATION_PREVIEW immediately before the write. Synchronous and exact; about 2.5 listings/s.
-* :meth:`AmazonSubmitter.submit_feed`  - the bulk path. Parents still go through Listings Items
-  (they are few, and children cannot attach until they exist); everything else goes into
-  ``JSON_LISTINGS_FEED`` documents per marketplace, after a VALIDATION_PREVIEW spot check.
+* :meth:`AmazonSubmitter.submit_feed`  - the bulk path, per marketplace. A VALIDATION_PREVIEW
+  spot check of the non-parent listings runs first; if it fails, nothing in that marketplace is
+  written. Parents then go through Listings Items (they are few, and children cannot attach
+  until they exist); everything else goes into ``JSON_LISTINGS_FEED`` documents.
 
 Either way, a child whose parent failed in this run is not sent.
 """
@@ -81,10 +83,8 @@ def select_listings(
     if skus:
         wanted = {s.strip().upper() for s in skus if s.strip()}
         return [x for x in listings if x.source_sku.upper() in wanted or x.sku.upper() in wanted]
-    if rows is None:
-        return listings
     allowed: dict[str, set[str]] = {}
-    for row in rows:
+    for row in rows or []:
         markets = resolve_all(row.marketplaces or default_marketplaces)
         allowed[row.sku.upper()] = {m.code for m in markets}
     return [x for x in listings if x.marketplace_code in allowed.get(x.source_sku.upper(), set())]
@@ -132,13 +132,22 @@ def plan_submission(
         and (kids := children.get((x.marketplace_id, x.sku)))
         and not any(k.submittable for k in kids)
     }
+    parents = {(x.marketplace_id, x.sku): x for x in everything if x.is_parent}
+    sending: set[tuple[str, str]] = set()
     for listing in _ordered(listings):
+        parent_key = _parent_key(listing)
         if not listing.submittable:
             plan.blocked.append(listing)
         elif (
-            _parent_key(listing) in blocked_parents
+            parent_key in blocked_parents
             or (listing.marketplace_id, listing.sku) in childless_parents
         ):
+            plan.orphaned.append(listing)
+        elif parent_key is not None and not (
+            parent_key in sending
+            or ((parent := parents.get(parent_key)) is not None and state(parent) == "accepted")
+        ):
+            # Amazon cannot attach a child to a parent that does not exist there yet.
             plan.orphaned.append(listing)
         else:
             current = state(listing)
@@ -148,6 +157,7 @@ def plan_submission(
                 plan.in_flight.append(listing)
             else:
                 plan.send.append(listing)
+                sending.add((listing.marketplace_id, listing.sku))
     return plan
 
 
@@ -264,41 +274,46 @@ class AmazonSubmitter:
         timeout_s: float = 1800.0,
     ) -> FeedRun:
         run = self.feed_run
-        parents = [x for x in listings if x.is_parent]
-        others = [x for x in listings if not x.is_parent]
+        by_market: dict[str, tuple[list[BuiltListing], list[BuiltListing]]] = {}
+        for listing in _ordered(listings):
+            parents, others = by_market.setdefault(listing.marketplace_code, ([], []))
+            (parents if listing.is_parent else others).append(listing)
 
-        parent_outcomes = self.submit_items(parents, preview_first=True)
-        run.outcomes.extend(parent_outcomes)
-        failed_parents: set[tuple[str, str] | None] = {
-            (o.marketplace_id, o.sku) for o in parent_outcomes if not o.accepted
-        }
-
-        by_market: dict[str, list[BuiltListing]] = {}
-        for listing in others:
-            if _parent_key(listing) in failed_parents:
-                run.outcomes.append(self._record(_skipped_child(listing)))
-                continue
-            by_market.setdefault(listing.marketplace_code, []).append(listing)
-
-        for code, group in by_market.items():
+        for code, (parents, others) in by_market.items():
             market = resolve(code)
-            previews = self.validate(_diverse_sample(group, preview_sample))
-            failed = [p for p in previews if not p.accepted]
-            if failed:
-                # One systematic problem shows up on every SKU. Finding it in a five-listing
-                # preview is the whole reason the preview exists, so the feed is not sent.
-                run.outcomes.extend(failed)
-                failed_skus = {p.sku for p in failed}
-                run.outcomes.extend(
-                    self._record(
-                        _not_sent(
-                            x, "FeedPreviewFailed", "spot-check preview failed; feed not sent"
+            if others:
+                previews = self.validate(_diverse_sample(others, preview_sample))
+                failed = [p for p in previews if not p.accepted]
+                if failed:
+                    # One systematic problem shows up on every SKU. Finding it in a five-listing
+                    # preview is the whole reason the preview exists, so the feed is not sent -
+                    # and neither are this marketplace's parents, which would be empty pages.
+                    run.outcomes.extend(failed)
+                    failed_skus = {p.sku for p in failed}
+                    run.outcomes.extend(
+                        self._record(
+                            _not_sent(
+                                x, "FeedPreviewFailed", "spot-check preview failed; feed not sent"
+                            )
                         )
+                        for x in parents + others
+                        if x.sku not in failed_skus
                     )
-                    for x in group
-                    if x.sku not in failed_skus
-                )
-                log.error("submit.feed_preview_failed", marketplace=code, failed=len(failed))
+                    log.error("submit.feed_preview_failed", marketplace=code, failed=len(failed))
+                    continue
+
+            parent_outcomes = self.submit_items(parents, preview_first=True)
+            run.outcomes.extend(parent_outcomes)
+            failed_parents: set[tuple[str, str] | None] = {
+                (o.marketplace_id, o.sku) for o in parent_outcomes if not o.accepted
+            }
+            group: list[BuiltListing] = []
+            for listing in others:
+                if _parent_key(listing) in failed_parents:
+                    run.outcomes.append(self._record(_skipped_child(listing)))
+                else:
+                    group.append(listing)
+            if not group:
                 continue
 
             feeds = FeedsClient(

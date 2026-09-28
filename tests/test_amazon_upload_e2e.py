@@ -312,6 +312,7 @@ def test_feed_preview_failure_stops_the_feed(env: dict[str, Any]) -> None:
     result = run("amazon", "submit", "--confirm", "--feed", input="y\n")
     assert result.exit_code == 1
     assert fake.feeds == {}
+    assert fake.writes() == []  # the parent would be an empty detail page without its children
     assert "FeedPreviewFailed" in result.output
 
 
@@ -366,6 +367,48 @@ def test_a_child_named_alone_is_held_when_its_parent_is_blocked(env: dict[str, A
     result = run("amazon", "submit", "--confirm", "R985-7", input="y\n")
     assert result.exit_code == 1
     assert env["fake"].listing_calls == []
+
+
+def test_a_child_named_alone_is_held_until_its_parent_is_created(env: dict[str, Any]) -> None:
+    build_ok()
+    result = run("amazon", "submit", "--confirm", "R985-7", input="y\n")
+    assert result.exit_code == 1
+    assert env["fake"].listing_calls == []
+    assert "R985-7" in result.output
+
+    assert run("amazon", "submit", "--confirm", "R985-PARENT", input="y\n").exit_code == 0
+    result = run("amazon", "submit", "--confirm", "R985-7", input="y\n")
+    assert result.exit_code == 0, result.output
+    assert [c.sku for c in env["fake"].writes()] == ["R985-PARENT", "R985-7"]
+
+
+def test_feed_preview_sample_below_one_is_refused(env: dict[str, Any]) -> None:
+    build_ok()
+    result = run("amazon", "submit", "--confirm", "--feed", "--preview-sample", "0", input="y\n")
+    assert result.exit_code == 2
+    assert env["fake"].listing_calls == [] and env["fake"].feeds == {}
+
+
+def test_a_missing_workbook_refuses_instead_of_selecting_everything(env: dict[str, Any]) -> None:
+    build_ok()
+    (env["root"] / "Product Listing.xlsx").unlink()
+    for args in (("validate",), ("submit", "--confirm")):
+        result = run("amazon", *args, input="y\n")
+        assert result.exit_code == 2, result.output
+        assert "name the SKUs explicitly" in result.output
+    assert env["fake"].listing_calls == []
+
+
+def test_a_failed_delete_keeps_the_listing_live(env: dict[str, Any]) -> None:
+    build_ok()
+    assert run("amazon", "submit", "--confirm", "E1154", input="y\n").exit_code == 0
+    env["fake"].reject_delete.add("E1154")
+    assert run("amazon", "delete", "E1154", "--confirm", input="y\n").exit_code == 1
+    with Ledger(settings().state_db) as ledger:
+        assert "E1154" in {e.sku for e in ledger.live_skus()}
+    again = run("amazon", "submit", "--confirm", "E1154", input="y\n")
+    assert again.exit_code == 0
+    assert "up to date" in again.output
 
 
 def test_delete_then_resubmit_sends_the_same_payload_again(env: dict[str, Any]) -> None:

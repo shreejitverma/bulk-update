@@ -199,13 +199,14 @@ class Ledger:
         """
         row = self._conn.execute(
             """SELECT s.payload_hash, s.status, s.mode, s.submission_id FROM submissions s
-               WHERE s.sku = ? AND s.marketplace_id = ? AND s.mode IN ('SUBMIT', 'DELETE')
+               WHERE s.sku = ? AND s.marketplace_id = ?
+                 AND (s.mode = 'SUBMIT' OR (s.mode = 'DELETE' AND s.status = 'accepted'))
                ORDER BY s.id DESC LIMIT 1""",
             (listing.sku, listing.marketplace_id),
         ).fetchone()
         if row is None:
             return "new"
-        if row["mode"] == "DELETE" and row["status"] == "accepted":
+        if row["mode"] == "DELETE":
             return "new"  # deleted since: the same payload must be sent again to restore it
         if row["payload_hash"] != listing.payload_hash:
             return "changed"
@@ -265,7 +266,7 @@ class Ledger:
         Derived from the write history, not from ``listings.status``: that column records the
         latest event of any kind, so a failed preview, an in-flight feed, or a rejected *update*
         to a live listing would otherwise drop a listing that is still live from this list.
-        A SKU is live when it has an accepted SUBMIT and no later deletion.
+        A SKU is live when it has an accepted SUBMIT and no later accepted deletion.
         """
         sql = """
             SELECT s.sku, s.marketplace_id, s.payload_hash, s.status, s.submitted_at AS built_at
@@ -279,7 +280,7 @@ class Ledger:
               AND NOT EXISTS (
                 SELECT 1 FROM submissions d
                 WHERE d.sku = s.sku AND d.marketplace_id = s.marketplace_id
-                  AND d.mode = 'DELETE' AND d.id > s.id
+                  AND d.mode = 'DELETE' AND d.status = 'accepted' AND d.id > s.id
               )
         """
         params: tuple[Any, ...] = ()

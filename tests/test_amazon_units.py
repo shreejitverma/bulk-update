@@ -17,6 +17,7 @@ from anzorlist.config import Settings
 from anzorlist.marketplaces import Region
 from anzorlist.media.pipeline import MediaPipeline
 from anzorlist.models.listing import BuiltListing, ListingIssue, ListingStatus
+from anzorlist.store.db import SubmissionState
 
 
 class _Tokens:
@@ -98,6 +99,25 @@ class TestReconcile:
         result = FeedResult("F1", "DONE", summary=report["summary"], report=report)
         assert all(o.status is ListingStatus.ERROR for o in reconcile(result, _manifest("A", "B")))
 
+    def test_an_unattributed_warning_does_not_skip_the_summary_check(self) -> None:
+        report = {
+            "issues": [{"code": "W", "severity": "WARNING", "message": ""}],
+            "summary": {"messagesProcessed": 1, "messagesInvalid": 0},
+        }
+        result = FeedResult("F1", "DONE", summary=report["summary"], report=report)
+        outcomes = reconcile(result, _manifest("A", "B"))
+        assert [o.status for o in outcomes] == [ListingStatus.ERROR] * 2
+        assert outcomes[0].issues[-1].code == "FeedReportMismatch"
+
+    def test_an_unattributed_error_rejects_every_message(self) -> None:
+        report = {
+            "issues": [{"code": "E", "severity": "ERROR", "message": ""}],
+            "summary": {"messagesProcessed": 0, "messagesInvalid": 2},
+        }
+        result = FeedResult("F1", "DONE", summary=report["summary"], report=report)
+        outcomes = reconcile(result, _manifest("A", "B"))
+        assert [o.status for o in outcomes] == [ListingStatus.REJECTED] * 2
+
     def test_a_consistent_summary_is_trusted(self) -> None:
         report = {
             "issues": [{"messageId": 1, "code": "E", "severity": "ERROR", "message": ""}],
@@ -139,6 +159,23 @@ class TestPlan:
         plan = plan_submission(family, lambda x: "new")
         assert plan.send == []
         assert [x.sku for x in plan.orphaned] == ["R1-PARENT"]
+
+    def test_child_selected_alone_is_held_until_its_parent_is_on_amazon(self) -> None:
+        parent = _listing("R1-PARENT", is_parent=True)
+        child = _listing("R1-7", parent="R1-PARENT")
+        plan = plan_submission([child], lambda x: "new", family=[parent, child])
+        assert plan.send == [] and plan.orphaned == [child]
+
+        def parent_accepted(x: BuiltListing) -> SubmissionState:
+            return "accepted" if x.is_parent else "new"
+
+        plan = plan_submission([child], parent_accepted, family=[parent, child])
+        assert plan.send == [child] and plan.orphaned == []
+
+    def test_child_goes_when_its_parent_is_sent_in_the_same_run(self) -> None:
+        family = [_listing("R1-7", parent="R1-PARENT"), _listing("R1-PARENT", is_parent=True)]
+        plan = plan_submission(family, lambda x: "new")
+        assert [x.sku for x in plan.send] == ["R1-PARENT", "R1-7"]
 
     def test_children_of_a_blocked_parent_are_orphaned(self) -> None:
         family = [

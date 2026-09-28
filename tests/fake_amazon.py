@@ -33,6 +33,7 @@ class FakeAmazon:
     reject_submit: set[str] = field(default_factory=set)
     # SKUs whose feed message the processing report marks as an ERROR.
     reject_in_feed: set[str] = field(default_factory=set)
+    reject_delete: set[str] = field(default_factory=set)
     feed_status: str = "DONE"
 
     listing_calls: list[ListingCall] = field(default_factory=list)
@@ -73,6 +74,10 @@ class FakeAmazon:
         _seller, encoded_sku = request.url.path[len(LISTINGS_PREFIX) :].split("/", 1)
         sku = unquote(encoded_sku)
         if request.method == "DELETE":
+            if sku in self.reject_delete:
+                return httpx.Response(
+                    200, json={"sku": sku, "status": "INVALID", "submissionId": "del", "issues": []}
+                )
             self.deleted.append(sku)
             return httpx.Response(
                 200, json={"sku": sku, "status": "ACCEPTED", "submissionId": "del", "issues": []}
