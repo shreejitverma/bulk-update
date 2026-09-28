@@ -57,11 +57,11 @@ log = structlog.get_logger(__name__)
 class BuildOptions:
     """What the operator asked for. Defaults are the safe, offline-capable path."""
 
-    use_copy: bool = True          # call Claude; False uses spec-sheet fallback copy
-    use_media: bool = True         # download and host images
-    upload_media: bool = True      # push to R2 (False = validate only)
-    schema_check: bool = True      # validate against Amazon's cached JSON Schema
-    force_refetch: bool = False    # ignore the raw HTML cache
+    use_copy: bool = True  # call Claude; False uses spec-sheet fallback copy
+    use_media: bool = True  # download and host images
+    upload_media: bool = True  # push to R2 (False = validate only)
+    schema_check: bool = True  # validate against Amazon's cached JSON Schema
+    force_refetch: bool = False  # ignore the raw HTML cache
     fx_rates: dict[str, str] = field(default_factory=dict)  # marketplace code -> USD rate
     charm_pricing: bool = False
 
@@ -80,8 +80,10 @@ class SkuBuild:
 
     @property
     def ok(self) -> bool:
-        return bool(self.listings) and not self.errors and all(
-            listing.submittable for listing in self.listings
+        return (
+            bool(self.listings)
+            and not self.errors
+            and all(listing.submittable for listing in self.listings)
         )
 
 
@@ -179,22 +181,29 @@ class BuildPipeline:
                     marketplace,
                     fee_fraction=self.settings.markup_amazon,
                     override=row.price_override_usd,
-                    list_price=row.list_price_usd or (
-                        product.pricing.list_price.amount if product.pricing.list_price else None
-                    ),
+                    list_price=row.list_price_usd
+                    or (product.pricing.list_price.amount if product.pricing.list_price else None),
                     floor=self.settings.price_floor,
                     fx_rate=self._fx_rate(marketplace, options),
                     charm=options.charm_pricing,
                 )
             except PricingError as exc:
                 build.errors.append(f"{marketplace.code}: {exc}")
-                log.warning("pipeline.pricing_failed", sku=row.sku,
-                            marketplace=marketplace.code, error=str(exc))
+                log.warning(
+                    "pipeline.pricing_failed",
+                    sku=row.sku,
+                    marketplace=marketplace.code,
+                    error=str(exc),
+                )
                 continue
 
             listings = self.mapper.build(
-                product=product, row=row, marketplace=marketplace,
-                copy=copy_obj, quote=quote, image_urls=image_urls,
+                product=product,
+                row=row,
+                marketplace=marketplace,
+                copy=copy_obj,
+                quote=quote,
+                image_urls=image_urls,
             )
             if options.schema_check:
                 for listing in listings:
@@ -249,10 +258,16 @@ class BuildPipeline:
         if result.ok and result.copy is not None:
             return result.copy, result.escalated, result.model_used
 
-        log.warning("pipeline.copy_failed_using_fallback", sku=product.sku,
-                    errors=[e.code for e in result.report.errors])
-        return (fallback_copy(product, self.settings.brand_name), result.escalated,
-                f"fallback (validation failed after {result.attempts} attempts)")
+        log.warning(
+            "pipeline.copy_failed_using_fallback",
+            sku=product.sku,
+            errors=[e.code for e in result.report.errors],
+        )
+        return (
+            fallback_copy(product, self.settings.brand_name),
+            result.escalated,
+            f"fallback (validation failed after {result.attempts} attempts)",
+        )
 
     def _schema_check(self, listing: BuiltListing, marketplace: Marketplace) -> None:
         """Validate the payload against Amazon's own schema, locally.
@@ -263,35 +278,43 @@ class BuildPipeline:
         try:
             schema = self.definitions.get_schema(listing.product_type, marketplace)
         except SchemaUnavailable as exc:
-            listing.issues.append(ListingIssue(
-                code="SchemaNotCached",
-                message=str(exc).split("\n")[0]
-                + " — the payload was built but not verified against Amazon's rules.",
-                severity=IssueSeverity.WARNING,
-                source="local",
-            ))
+            listing.issues.append(
+                ListingIssue(
+                    code="SchemaNotCached",
+                    message=str(exc).split("\n")[0]
+                    + " — the payload was built but not verified against Amazon's rules.",
+                    severity=IssueSeverity.WARNING,
+                    source="local",
+                )
+            )
             return
         except Exception as exc:  # noqa: BLE001
-            listing.issues.append(ListingIssue(
-                code="SchemaCheckFailed",
-                message=f"could not run the schema check: {exc}",
-                severity=IssueSeverity.WARNING,
-                source="local",
-            ))
+            listing.issues.append(
+                ListingIssue(
+                    code="SchemaCheckFailed",
+                    message=f"could not run the schema check: {exc}",
+                    severity=IssueSeverity.WARNING,
+                    source="local",
+                )
+            )
             return
 
         issues = validate_attributes(listing.attributes, schema)
         for issue in issues:
-            listing.issues.append(ListingIssue(
-                code="SchemaViolation",
-                message=issue.message,
-                severity=(IssueSeverity.ERROR if issue.severity == "ERROR"
-                          else IssueSeverity.INFO),
-                attribute_names=[issue.attribute] if issue.attribute else [],
-                source="schema",
-            ))
+            listing.issues.append(
+                ListingIssue(
+                    code="SchemaViolation",
+                    message=issue.message,
+                    severity=(
+                        IssueSeverity.ERROR if issue.severity == "ERROR" else IssueSeverity.INFO
+                    ),
+                    attribute_names=[issue.attribute] if issue.attribute else [],
+                    source="schema",
+                )
+            )
         listing.status = (
-            ListingStatus.SCHEMA_FAILED if any(i.blocking for i in listing.issues)
+            ListingStatus.SCHEMA_FAILED
+            if any(i.blocking for i in listing.issues)
             else ListingStatus.SCHEMA_OK
         )
 
@@ -300,18 +323,24 @@ class BuildPipeline:
         out_dir = self.settings.build_dir / listing.marketplace_code
         out_dir.mkdir(parents=True, exist_ok=True)
         path = out_dir / f"{listing.sku}.json"
-        path.write_text(json.dumps({
-            "sku": listing.sku,
-            "marketplace": listing.marketplace_code,
-            "productType": listing.product_type,
-            "requirements": listing.requirements,
-            "isParent": listing.is_parent,
-            "parentSku": listing.parent_sku,
-            "payloadHash": listing.payload_hash,
-            "sourceUrl": listing.source_url,
-            "issues": [i.model_dump(mode="json") for i in listing.issues],
-            "body": listing.body(),
-        }, indent=2, ensure_ascii=False))
+        path.write_text(
+            json.dumps(
+                {
+                    "sku": listing.sku,
+                    "marketplace": listing.marketplace_code,
+                    "productType": listing.product_type,
+                    "requirements": listing.requirements,
+                    "isParent": listing.is_parent,
+                    "parentSku": listing.parent_sku,
+                    "payloadHash": listing.payload_hash,
+                    "sourceUrl": listing.source_url,
+                    "issues": [i.model_dump(mode="json") for i in listing.issues],
+                    "body": listing.body(),
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
         return path
 
     # ------------------------------------------------------------------ helpers

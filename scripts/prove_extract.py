@@ -48,22 +48,31 @@ def main() -> None:
         print(f"  internal_id   : {p.internal_product_id}")
         print(f"  title         : {p.marketing_title_raw[:80]!r}")
         print(f"  short_name    : {p.short_name!r}")
-        print(f"  metal         : {p.attributes.metal_purity} {p.attributes.metal_color} "
-              f"{p.attributes.metal_type}  weight={p.attributes.gross_weight_g}g")
-        print("  gemstones     : "
-              + "; ".join(f"{g.type} carat={g.carat_weight} treat={g.treatment} "
-                          f"genuine={g.genuine} origin={g.origin}" for g in p.attributes.gemstones))
-        print(f"  price         : list={p.pricing.list_price and p.pricing.list_price.amount} "
-              f"our={p.pricing.our_price and p.pricing.our_price.amount} "
-              f"save={p.pricing.you_save and p.pricing.you_save.amount} "
-              f"({p.pricing.you_save_percent}%)")
+        print(
+            f"  metal         : {p.attributes.metal_purity} {p.attributes.metal_color} "
+            f"{p.attributes.metal_type}  weight={p.attributes.gross_weight_g}g"
+        )
+        print(
+            "  gemstones     : "
+            + "; ".join(
+                f"{g.type} carat={g.carat_weight} treat={g.treatment} "
+                f"genuine={g.genuine} origin={g.origin}"
+                for g in p.attributes.gemstones
+            )
+        )
+        print(
+            f"  price         : list={p.pricing.list_price and p.pricing.list_price.amount} "
+            f"our={p.pricing.our_price and p.pricing.our_price.amount} "
+            f"save={p.pricing.you_save and p.pricing.you_save.amount} "
+            f"({p.pricing.you_save_percent}%)"
+        )
         print(f"  stock/ship    : in_stock={p.in_stock} free_ship={p.free_shipping}")
         print(f"  specs         : {[r.label for r in p.specs]}")
         print(f"  size_options  : n={len(sizes)} axes={size_axes} e.g. {deltas}")
         appraisals = [(a.name, str(a.price_delta.amount)) for a in p.appraisal_options]
         print(f"  appraisals    : {appraisals}")
-        imgs = [m for m in p.media if m.kind == 'image']
-        vids = [m for m in p.media if m.kind == 'video']
+        imgs = [m for m in p.media if m.kind == "image"]
+        vids = [m for m in p.media if m.kind == "video"]
         main_img = imgs[0].source_url if imgs else None
         print(f"  media         : {len(imgs)} images, {len(vids)} video  main={main_img}")
         print(f"  breadcrumbs   : {p.breadcrumbs}")

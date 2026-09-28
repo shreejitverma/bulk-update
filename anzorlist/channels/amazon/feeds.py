@@ -79,7 +79,9 @@ class FeedsClient:
 
     def _create_document(self) -> tuple[str, str]:
         payload = self._client.request(
-            "POST", f"{FEEDS_BASE}/documents", operation="createFeedDocument",
+            "POST",
+            f"{FEEDS_BASE}/documents",
+            operation="createFeedDocument",
             json_body={"contentType": FEED_CONTENT_TYPE},
         ).json
         return str(payload["feedDocumentId"]), str(payload["url"])
@@ -114,7 +116,8 @@ class FeedsClient:
         if not (confirm and self._settings.allow_live):
             raise LiveWriteBlocked(
                 f"a feed of {len(listings)} listing(s)",
-                confirm=confirm, allow_live=self._settings.allow_live,
+                confirm=confirm,
+                allow_live=self._settings.allow_live,
             )
         if not listings:
             raise FeedError("no listings to submit")
@@ -127,7 +130,9 @@ class FeedsClient:
         self._upload(url, body)
 
         feed = self._client.request(
-            "POST", f"{FEEDS_BASE}/feeds", operation="createFeed",
+            "POST",
+            f"{FEEDS_BASE}/feeds",
+            operation="createFeed",
             json_body={
                 "feedType": JSON_LISTINGS_FEED,
                 "marketplaceIds": [m.marketplace_id for m in marketplaces],
@@ -135,15 +140,23 @@ class FeedsClient:
             },
         ).json
         feed_id = str(feed["feedId"])
-        log.warning("feeds.submitted", feed_id=feed_id, messages=len(document["messages"]),
-                    marketplaces=[m.code for m in marketplaces])
+        log.warning(
+            "feeds.submitted",
+            feed_id=feed_id,
+            messages=len(document["messages"]),
+            marketplaces=[m.code for m in marketplaces],
+        )
 
         if not poll:
             return FeedResult(feed_id=feed_id, processing_status="IN_QUEUE")
         return self.wait(feed_id, marketplaces[0], timeout_s=poll_timeout_s)
 
     def wait(
-        self, feed_id: str, marketplace: Marketplace, *, timeout_s: float = 900.0,
+        self,
+        feed_id: str,
+        marketplace: Marketplace,
+        *,
+        timeout_s: float = 900.0,
         interval_s: float = 20.0,
     ) -> FeedResult:
         """Poll until the feed reaches a terminal state, then parse its report."""
@@ -179,8 +192,9 @@ class FeedsClient:
         )
 
     def _download_report(self, document_id: str) -> dict[str, Any]:
-        info = self._client.get(f"{FEEDS_BASE}/documents/{document_id}",
-                                operation="getFeedDocument")
+        info = self._client.get(
+            f"{FEEDS_BASE}/documents/{document_id}", operation="getFeedDocument"
+        )
         url = str(info["url"])
         compression = str(info.get("compressionAlgorithm", "") or "")
         with httpx.Client(timeout=120.0) as raw:
@@ -203,14 +217,16 @@ def build_feed_document(listings: list[BuiltListing], seller_id: str) -> dict[st
     """
     messages: list[dict[str, Any]] = []
     for i, listing in enumerate(listings, start=1):
-        messages.append({
-            "messageId": i,
-            "sku": listing.sku,
-            "operationType": "UPDATE",
-            "productType": listing.product_type,
-            "requirements": listing.requirements,
-            "attributes": listing.attributes,
-        })
+        messages.append(
+            {
+                "messageId": i,
+                "sku": listing.sku,
+                "operationType": "UPDATE",
+                "productType": listing.product_type,
+                "requirements": listing.requirements,
+                "attributes": listing.attributes,
+            }
+        )
     return {
         "header": {
             "sellerId": seller_id,
@@ -237,22 +253,29 @@ def _outcomes_from_report(report: Any, marketplace: Marketplace) -> list[Submiss
             continue
         sku = str(result.get("sku", "") or result.get("messageId", ""))
         severity = _severity(result.get("severity"))
-        outcomes.append(SubmissionOutcome(
-            sku=sku,
-            marketplace_id=marketplace.marketplace_id,
-            marketplace_code=marketplace.code,
-            mode="SUBMIT",
-            status=(ListingStatus.REJECTED if severity is IssueSeverity.ERROR
-                    else ListingStatus.SUBMITTED),
-            issues=[ListingIssue(
-                code=str(result.get("code", "FeedIssue")),
-                message=str(result.get("message", "")),
-                severity=severity,
-                attribute_names=[str(a) for a in result.get("attributeNames", []) or []],
-                source="amazon",
-            )],
-            submitted_at=now,
-        ))
+        outcomes.append(
+            SubmissionOutcome(
+                sku=sku,
+                marketplace_id=marketplace.marketplace_id,
+                marketplace_code=marketplace.code,
+                mode="SUBMIT",
+                status=(
+                    ListingStatus.REJECTED
+                    if severity is IssueSeverity.ERROR
+                    else ListingStatus.SUBMITTED
+                ),
+                issues=[
+                    ListingIssue(
+                        code=str(result.get("code", "FeedIssue")),
+                        message=str(result.get("message", "")),
+                        severity=severity,
+                        attribute_names=[str(a) for a in result.get("attributeNames", []) or []],
+                        source="amazon",
+                    )
+                ],
+                submitted_at=now,
+            )
+        )
     return outcomes
 
 

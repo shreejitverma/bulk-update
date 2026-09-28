@@ -30,36 +30,83 @@ _BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("phone", re.compile(r"\(?\b\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b")),
     ("email", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.]+\b")),
     ("url", re.compile(r"\b(?:https?://|www\.)\S+", re.IGNORECASE)),
-    ("navigation", re.compile(
-        r"\b(?:click here|click on|see (?:our|the) (?:website|site|catalog)|"
-        r"visit (?:us|our)|scroll down|add to cart|order now|call (?:us|today|now))\b",
-        re.IGNORECASE)),
-    ("shipping_promise", re.compile(
-        r"\b(?:free shipping|ships? (?:same|next) day|overnight (?:delivery|shipping)|"
-        r"expedited shipping|delivery guaranteed|arrives? (?:by|in) \d+)\b", re.IGNORECASE)),
-    ("guarantee", re.compile(
-        r"\b(?:\d+[- ]day (?:money[- ]back|return|guarantee)|satisfaction guaranteed|"
-        r"lifetime (?:warranty|guarantee)|risk[- ]free)\b", re.IGNORECASE)),
-    ("price_claim", re.compile(
-        r"\b(?:lowest price|best price|cheapest|price match|wholesale price|below (?:retail|cost)|"
-        r"\d+% off|sale price|special offer|discount)\b", re.IGNORECASE)),
-    ("competitor", re.compile(
-        r"\b(?:compare (?:to|with)|unlike (?:other|competitors)|better than|"
-        r"cheaper than|beat(?:s)? (?:any|the) )\b", re.IGNORECASE)),
-    ("financing", re.compile(r"\b(?:layaway|financing available|payment plan|credit terms)\b",
-                             re.IGNORECASE)),
-    ("contact_cta", re.compile(
-        r"\b(?:contact us|email us|call for|inquire"
-        r"|for more information,?\s*(?:call|email|visit))\b",
-        re.IGNORECASE)),
+    (
+        "navigation",
+        re.compile(
+            r"\b(?:click here|click on|see (?:our|the) (?:website|site|catalog)|"
+            r"visit (?:us|our)|scroll down|add to cart|order now|call (?:us|today|now))\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "shipping_promise",
+        re.compile(
+            r"\b(?:free shipping|ships? (?:same|next) day|overnight (?:delivery|shipping)|"
+            r"expedited shipping|delivery guaranteed|arrives? (?:by|in) \d+)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "guarantee",
+        re.compile(
+            r"\b(?:\d+[- ]day (?:money[- ]back|return|guarantee)|satisfaction guaranteed|"
+            r"lifetime (?:warranty|guarantee)|risk[- ]free)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "price_claim",
+        re.compile(
+            r"\b(?:lowest price|best price|cheapest|price match|wholesale price|"
+            r"below (?:retail|cost)|\d+% off|sale price|special offer|discount)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "competitor",
+        re.compile(
+            r"\b(?:compare (?:to|with)|unlike (?:other|competitors)|better than|"
+            r"cheaper than|beat(?:s)? (?:any|the) )\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "financing",
+        re.compile(r"\b(?:layaway|financing available|payment plan|credit terms)\b", re.IGNORECASE),
+    ),
+    (
+        "contact_cta",
+        re.compile(
+            r"\b(?:contact us|email us|call for|inquire"
+            r"|for more information,?\s*(?:call|email|visit))\b",
+            re.IGNORECASE,
+        ),
+    ),
     ("html_entity_junk", re.compile(r"&[a-z]+;|&#\d+;", re.IGNORECASE)),
 )
 
 # Amazon rejects these outright in titles and bullets. Applied as a final guard on generated copy.
 PROMOTIONAL_WORDS: tuple[str, ...] = (
-    "best", "cheapest", "sale", "free", "bonus", "discount", "guarantee", "guaranteed",
-    "hot", "new arrival", "limited time", "closeout", "clearance", "wholesale",
-    "top rated", "#1", "number one", "must have", "amazing", "perfect gift",
+    "best",
+    "cheapest",
+    "sale",
+    "free",
+    "bonus",
+    "discount",
+    "guarantee",
+    "guaranteed",
+    "hot",
+    "new arrival",
+    "limited time",
+    "closeout",
+    "clearance",
+    "wholesale",
+    "top rated",
+    "#1",
+    "number one",
+    "must have",
+    "amazing",
+    "perfect gift",
 )
 
 _WHITESPACE = re.compile(r"[ \t ]+")
@@ -95,8 +142,14 @@ def normalize_text(text: str) -> str:
     text = html.unescape(text)
     text = unicodedata.normalize("NFKC", text)
     replacements = {
-        "‘": "'", "’": "'", "“": '"', "”": '"',
-        "–": "-", "—": " - ", "…": "...", " ": " ",
+        "‘": "'",
+        "’": "'",
+        "“": '"',
+        "”": '"',
+        "–": "-",
+        "—": " - ",
+        "…": "...",
+        " ": " ",
         "�": "",  # replacement char from a failed decode — drop, never guess
     }
     for bad, good in replacements.items():
@@ -154,8 +207,9 @@ def sanitize(raw: str) -> SanitizeResult:
 
     text = _MULTI_NEWLINE.sub("\n", " ".join(kept)).strip()
     result.text = text
-    log.info("sanitize.done", original=result.original_length, cleaned=len(text),
-             removed=result.report())
+    log.info(
+        "sanitize.done", original=result.original_length, cleaned=len(text), removed=result.report()
+    )
     return result
 
 

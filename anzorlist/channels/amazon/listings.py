@@ -80,8 +80,9 @@ class ListingsClient:
         discards. ``mode="SUBMIT"`` writes, and is refused unless both safety gates are open.
         """
         if mode == "SUBMIT" and not (confirm and self._settings.allow_live):
-            raise LiveWriteBlocked(listing.sku, confirm=confirm,
-                                   allow_live=self._settings.allow_live)
+            raise LiveWriteBlocked(
+                listing.sku, confirm=confirm, allow_live=self._settings.allow_live
+            )
 
         params: dict[str, Any] = {
             "marketplaceIds": marketplace.marketplace_id,
@@ -91,12 +92,21 @@ class ListingsClient:
             params["mode"] = "VALIDATION_PREVIEW"
 
         path = f"{LISTINGS_BASE}/{self._client.seller_id}/{_encode_sku(listing.sku)}"
-        log.info("listings.put", sku=listing.sku, marketplace=marketplace.code, mode=mode,
-                 product_type=listing.product_type, is_parent=listing.is_parent)
+        log.info(
+            "listings.put",
+            sku=listing.sku,
+            marketplace=marketplace.code,
+            mode=mode,
+            product_type=listing.product_type,
+            is_parent=listing.is_parent,
+        )
 
         try:
             resp = self._client.request(
-                "PUT", path, operation="putListingsItem", params=params,
+                "PUT",
+                path,
+                operation="putListingsItem",
+                params=params,
                 json_body=listing.body(),
             )
         except SpApiError as exc:
@@ -109,17 +119,21 @@ class ListingsClient:
                 request_id=exc.request_id,
                 http_status=exc.status,
                 issues=[
-                    ListingIssue(code=str(e.get("code", "SpApiError")),
-                                 message=str(e.get("message", "")),
-                                 severity=IssueSeverity.ERROR, source="amazon")
+                    ListingIssue(
+                        code=str(e.get("code", "SpApiError")),
+                        message=str(e.get("message", "")),
+                        severity=IssueSeverity.ERROR,
+                        source="amazon",
+                    )
                     for e in exc.errors
                 ],
                 submitted_at=datetime.now(timezone.utc),
                 payload_hash=listing.payload_hash,
             )
 
-        return _outcome_from_response(resp.json, listing, marketplace, mode, resp.request_id,
-                                      resp.status)
+        return _outcome_from_response(
+            resp.json, listing, marketplace, mode, resp.request_id, resp.status
+        )
 
     def patch(
         self,
@@ -149,15 +163,23 @@ class ListingsClient:
 
         path = f"{LISTINGS_BASE}/{self._client.seller_id}/{_encode_sku(sku)}"
         resp = self._client.request(
-            "PATCH", path, operation="patchListingsItem", params=params,
+            "PATCH",
+            path,
+            operation="patchListingsItem",
+            params=params,
             json_body={"productType": product_type, "patches": patches},
         )
         stub = BuiltListing(
-            sku=sku, source_sku=sku, marketplace_id=marketplace.marketplace_id,
-            marketplace_code=marketplace.code, product_type=product_type, attributes={},
+            sku=sku,
+            source_sku=sku,
+            marketplace_id=marketplace.marketplace_id,
+            marketplace_code=marketplace.code,
+            product_type=product_type,
+            attributes={},
         )
-        return _outcome_from_response(resp.json, stub, marketplace, mode, resp.request_id,
-                                      resp.status)
+        return _outcome_from_response(
+            resp.json, stub, marketplace, mode, resp.request_id, resp.status
+        )
 
     def delete(
         self, sku: str, marketplace: Marketplace, *, confirm: bool = False
@@ -168,9 +190,13 @@ class ListingsClient:
 
         path = f"{LISTINGS_BASE}/{self._client.seller_id}/{_encode_sku(sku)}"
         resp = self._client.request(
-            "DELETE", path, operation="deleteListingsItem",
-            params={"marketplaceIds": marketplace.marketplace_id,
-                    "issueLocale": marketplace.locale},
+            "DELETE",
+            path,
+            operation="deleteListingsItem",
+            params={
+                "marketplaceIds": marketplace.marketplace_id,
+                "issueLocale": marketplace.locale,
+            },
         )
         log.warning("listings.deleted", sku=sku, marketplace=marketplace.code)
         payload = resp.json if isinstance(resp.json, dict) else {}
@@ -193,18 +219,26 @@ class ListingsClient:
         sku: str,
         marketplace: Marketplace,
         *,
-        included_data: tuple[str, ...] = ("summaries", "attributes", "issues", "offers",
-                                          "fulfillmentAvailability"),
+        included_data: tuple[str, ...] = (
+            "summaries",
+            "attributes",
+            "issues",
+            "offers",
+            "fulfillmentAvailability",
+        ),
     ) -> dict[str, Any] | None:
         """Fetch a listing's current state. Returns ``None`` when the SKU does not exist,
         which is how the pipeline distinguishes "create" from "update"."""
         path = f"{LISTINGS_BASE}/{self._client.seller_id}/{_encode_sku(sku)}"
         try:
             return self._client.get(
-                path, operation="getListingsItem",
-                params={"marketplaceIds": marketplace.marketplace_id,
-                        "issueLocale": marketplace.locale,
-                        "includedData": ",".join(included_data)},
+                path,
+                operation="getListingsItem",
+                params={
+                    "marketplaceIds": marketplace.marketplace_id,
+                    "issueLocale": marketplace.locale,
+                    "includedData": ",".join(included_data),
+                },
             )
         except SpApiError as exc:
             if exc.status == 404:
@@ -256,11 +290,15 @@ def _outcome_from_response(
     has_error = any(i.blocking for i in issues)
 
     if amazon_status == "ACCEPTED" and not has_error:
-        status = (ListingStatus.VALIDATED if mode == "VALIDATION_PREVIEW"
-                  else ListingStatus.SUBMITTED)
+        status = (
+            ListingStatus.VALIDATED if mode == "VALIDATION_PREVIEW" else ListingStatus.SUBMITTED
+        )
     elif amazon_status == "INVALID" or has_error:
-        status = (ListingStatus.VALIDATION_FAILED if mode == "VALIDATION_PREVIEW"
-                  else ListingStatus.REJECTED)
+        status = (
+            ListingStatus.VALIDATION_FAILED
+            if mode == "VALIDATION_PREVIEW"
+            else ListingStatus.REJECTED
+        )
     else:
         status = ListingStatus.PENDING
 
@@ -277,9 +315,16 @@ def _outcome_from_response(
         submitted_at=datetime.now(timezone.utc),
         payload_hash=listing.payload_hash,
     )
-    log.info("listings.outcome", **{"sku": listing.sku, "marketplace": marketplace.code,
-                                    "mode": mode, "status": status.value,
-                                    "issues": len(issues)})
+    log.info(
+        "listings.outcome",
+        **{
+            "sku": listing.sku,
+            "marketplace": marketplace.code,
+            "mode": mode,
+            "status": status.value,
+            "issues": len(issues),
+        },
+    )
     return outcome
 
 

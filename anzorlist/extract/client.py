@@ -32,9 +32,7 @@ from tenacity import (
 log = structlog.get_logger(__name__)
 
 DEFAULT_BASE_URL = "https://www.anzorjewelrycorp.com"
-DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (compatible; anzorlist/0.1; +ops@anzorjewelrycorp.com)"
-)
+DEFAULT_USER_AGENT = "Mozilla/5.0 (compatible; anzorlist/0.1; +ops@anzorjewelrycorp.com)"
 PRODUCT_PATH = "/Scripts/prodview.asp"
 CATEGORY_PATH = "/Scripts/prodList.asp"
 VIDEO_URL_TMPL = "https://anzorjewelrycorp.com/jewelry/{sku_lower}va.mp4"
@@ -137,9 +135,7 @@ class SiteClient:
         resp = self._client.get(url)
         if resp.status_code == 429 or resp.status_code >= 500:
             retry_after = resp.headers.get("Retry-After")
-            log.warning(
-                "site.retryable", url=url, status=resp.status_code, retry_after=retry_after
-            )
+            log.warning("site.retryable", url=url, status=resp.status_code, retry_after=retry_after)
             raise RetryableHTTP(f"{resp.status_code} for {url}")
         resp.raise_for_status()
         return resp

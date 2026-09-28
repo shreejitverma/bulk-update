@@ -68,7 +68,8 @@ class SpApiError(RuntimeError):
     ) -> None:
         parts = [f"{e.get('code', '?')}: {e.get('message', '')}" for e in errors] or [body[:300]]
         super().__init__(
-            f"SP-API {operation} failed with {status} — " + " | ".join(parts)
+            f"SP-API {operation} failed with {status} — "
+            + " | ".join(parts)
             + (f" (x-amzn-RequestId: {request_id})" if request_id else "")
         )
         self.status = status
@@ -148,8 +149,10 @@ class SpApiClient:
         self._http = http or httpx.Client(
             timeout=httpx.Timeout(60.0, connect=15.0),
             follow_redirects=False,
-            headers={"user-agent": "anzorlist/0.1 (Language=Python; Platform=Linux)",
-                     "accept": "application/json"},
+            headers={
+                "user-agent": "anzorlist/0.1 (Language=Python; Platform=Linux)",
+                "accept": "application/json",
+            },
         )
         self._buckets: dict[str, _Bucket] = {}
         self._buckets_lock = threading.Lock()
@@ -195,18 +198,29 @@ class SpApiClient:
             except httpx.TransportError as exc:
                 last_exc = exc
                 backoff = min(30.0, 2.0**attempt)
-                log.warning("spapi.transport_error", operation=operation, attempt=attempt,
-                            error=str(exc), backoff=backoff)
+                log.warning(
+                    "spapi.transport_error",
+                    operation=operation,
+                    attempt=attempt,
+                    error=str(exc),
+                    backoff=backoff,
+                )
                 time.sleep(backoff)
                 continue
 
-            request_id = (resp.headers.get("x-amzn-requestid")
-                          or resp.headers.get("x-amzn-request-id"))
+            request_id = resp.headers.get("x-amzn-requestid") or resp.headers.get(
+                "x-amzn-request-id"
+            )
             self._retune(bucket, resp, operation)
             log.info(
-                "spapi.call", operation=operation, method=method, status=resp.status_code,
-                attempt=attempt, ms=round((time.monotonic() - started) * 1000),
-                throttle_wait_ms=round(waited * 1000) or None, request_id=request_id,
+                "spapi.call",
+                operation=operation,
+                method=method,
+                status=resp.status_code,
+                attempt=attempt,
+                ms=round((time.monotonic() - started) * 1000),
+                throttle_wait_ms=round(waited * 1000) or None,
+                request_id=request_id,
             )
 
             if 200 <= resp.status_code < 300:
@@ -224,8 +238,13 @@ class SpApiClient:
 
             if resp.status_code == 429:
                 delay = _retry_after(resp, attempt)
-                log.warning("spapi.throttled", operation=operation, attempt=attempt, delay=delay,
-                            request_id=request_id)
+                log.warning(
+                    "spapi.throttled",
+                    operation=operation,
+                    attempt=attempt,
+                    delay=delay,
+                    request_id=request_id,
+                )
                 time.sleep(delay)
                 continue
 
@@ -239,8 +258,14 @@ class SpApiClient:
 
             if resp.status_code >= 500:
                 delay = min(30.0, 2.0**attempt)
-                log.warning("spapi.server_error", operation=operation, status=resp.status_code,
-                            attempt=attempt, delay=delay, request_id=request_id)
+                log.warning(
+                    "spapi.server_error",
+                    operation=operation,
+                    status=resp.status_code,
+                    attempt=attempt,
+                    delay=delay,
+                    request_id=request_id,
+                )
                 time.sleep(delay)
                 continue
 
@@ -248,8 +273,9 @@ class SpApiClient:
             raise SpApiError(resp.status_code, operation, errors, request_id, resp.text)
 
         if last_exc is not None:
-            raise SpApiError(0, operation, [{"code": "TransportError",
-                                             "message": str(last_exc)}], None) from last_exc
+            raise SpApiError(
+                0, operation, [{"code": "TransportError", "message": str(last_exc)}], None
+            ) from last_exc
         raise SpApiThrottled(
             f"{operation} still throttled after {self.MAX_ATTEMPTS} attempts. "
             f"Reduce concurrency or retry later; SP-API quota is per selling partner."

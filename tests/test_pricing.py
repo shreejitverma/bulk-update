@@ -54,8 +54,9 @@ class TestGrossUp:
 
 class TestOverride:
     def test_override_bypasses_grossup(self):
-        quote = price_for(Decimal("1000"), US, fee_fraction=Decimal("0.20"),
-                          override=Decimal("1099.00"))
+        quote = price_for(
+            Decimal("1000"), US, fee_fraction=Decimal("0.20"), override=Decimal("1099.00")
+        )
         assert quote.price == Decimal("1099.00")
         assert quote.source == "override"
 
@@ -67,21 +68,22 @@ class TestOverride:
 class TestFloor:
     def test_below_floor_refuses_rather_than_listing(self):
         with pytest.raises(PricingError, match="below the"):
-            price_for(Decimal("5.00"), US, fee_fraction=Decimal("0.20"),
-                      floor=Decimal("10.00"))
+            price_for(Decimal("5.00"), US, fee_fraction=Decimal("0.20"), floor=Decimal("10.00"))
 
 
 class TestListPrice:
     def test_list_price_at_or_below_selling_price_is_dropped(self):
         """A strike-through that is not higher is a false discount claim."""
-        quote = price_for(Decimal("1000"), US, fee_fraction=Decimal("0.20"),
-                          list_price=Decimal("1100"))
+        quote = price_for(
+            Decimal("1000"), US, fee_fraction=Decimal("0.20"), list_price=Decimal("1100")
+        )
         assert quote.price == Decimal("1250.00")
         assert quote.list_price is None  # 1100 < 1250, so it was dropped
 
     def test_genuine_list_price_survives(self):
-        quote = price_for(Decimal("1000"), US, fee_fraction=Decimal("0.20"),
-                          list_price=Decimal("1999"))
+        quote = price_for(
+            Decimal("1000"), US, fee_fraction=Decimal("0.20"), list_price=Decimal("1999")
+        )
         assert quote.list_price == Decimal("1999.00")
 
 
@@ -92,14 +94,14 @@ class TestCurrency:
             price_for(Decimal("1000"), UK, fee_fraction=Decimal("0.20"))
 
     def test_fx_rate_is_applied(self):
-        quote = price_for(Decimal("1000"), UK, fee_fraction=Decimal("0.20"),
-                          fx_rate=Decimal("0.79"))
+        quote = price_for(
+            Decimal("1000"), UK, fee_fraction=Decimal("0.20"), fx_rate=Decimal("0.79")
+        )
         assert quote.price == Decimal("987.50")  # 1250 * 0.79
         assert quote.currency == "GBP"
 
     def test_zero_decimal_currency_has_no_minor_unit(self):
-        quote = price_for(Decimal("1000"), JP, fee_fraction=Decimal("0.20"),
-                          fx_rate=Decimal("150"))
+        quote = price_for(Decimal("1000"), JP, fee_fraction=Decimal("0.20"), fx_rate=Decimal("150"))
         assert quote.price == quote.price.to_integral_value()
         assert "." not in str(quote.price)
 

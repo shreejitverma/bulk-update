@@ -131,16 +131,15 @@ def _build_products(
         cell = ws.cell(row=1, column=idx, value=col.header)
         cell.font = Font(bold=True, color="FFFFFF", size=11)
         cell.fill = (
-            _HDR_REQUIRED if col.required
-            else _HDR_NOTES if col.group == "Notes"
-            else _HDR_OPTIONAL
+            _HDR_REQUIRED if col.required else _HDR_NOTES if col.group == "Notes" else _HDR_OPTIONAL
         )
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         cell.border = _BORDER
         if col.help:
             required_tag = "REQUIRED\n\n" if col.required else "Optional.\n\n"
-            cell.comment = Comment(f"{col.header}\n\n{required_tag}{col.help}", "anzorlist",
-                                   width=380, height=190)
+            cell.comment = Comment(
+                f"{col.header}\n\n{required_tag}{col.help}", "anzorlist", width=380, height=190
+            )
         ws.column_dimensions[letter].width = col.width
         _attach_validation(ws, col, letter)
 
@@ -188,8 +187,9 @@ def _attach_validation(ws: Worksheet, col: Column, letter: str) -> None:
             dv.prompt = col.help[:250]
             dv.promptTitle = col.header
     elif col.type == "int":
-        dv = DataValidation(type="whole", operator="greaterThanOrEqual", formula1="0",
-                            allow_blank=True)
+        dv = DataValidation(
+            type="whole", operator="greaterThanOrEqual", formula1="0", allow_blank=True
+        )
         dv.error = "Whole number, zero or greater."
         dv.errorTitle = f"Invalid {col.header}"
     elif col.type == "decimal":
@@ -209,40 +209,73 @@ def _build_readme(ws: Worksheet) -> None:
 
     lines: list[tuple[str, str]] = [
         ("h1", "Anzor Jewelry → Amazon listing sheet"),
-        ("p", "Fill in the Products tab. Only the SKU column is required — everything else is "
-              "either optional or has a sensible default."),
+        (
+            "p",
+            "Fill in the Products tab. Only the SKU column is required — everything else is "
+            "either optional or has a sensible default.",
+        ),
         ("h2", "How it works"),
         ("li", "1.  You enter a SKU, e.g. R985."),
-        ("li", "2.  The system fetches that product from anzorjewelrycorp.com and extracts the "
-               "title, description, Item Details specs, price, images, and available ring sizes."),
-        ("li", "3.  It writes Amazon-compliant copy from those extracted facts, prices the item "
-               "with your fee markup, hosts the images, and builds the listing payload."),
-        ("li", "4.  It validates that payload against Amazon's own JSON schema for the product "
-               "type, offline, before anything is sent."),
-        ("li", "5.  It submits in VALIDATION_PREVIEW mode first — Amazon checks the listing and "
-               "returns errors without creating anything."),
+        (
+            "li",
+            "2.  The system fetches that product from anzorjewelrycorp.com and extracts the "
+            "title, description, Item Details specs, price, images, and available ring sizes.",
+        ),
+        (
+            "li",
+            "3.  It writes Amazon-compliant copy from those extracted facts, prices the item "
+            "with your fee markup, hosts the images, and builds the listing payload.",
+        ),
+        (
+            "li",
+            "4.  It validates that payload against Amazon's own JSON schema for the product "
+            "type, offline, before anything is sent.",
+        ),
+        (
+            "li",
+            "5.  It submits in VALIDATION_PREVIEW mode first — Amazon checks the listing and "
+            "returns errors without creating anything.",
+        ),
         ("li", "6.  Only after you review the preview and pass --confirm does anything go live."),
         ("h2", "The only column you must fill"),
-        ("p", "SKU. Everything else is an override that beats the website data. A blank cell "
-              "means 'use what the site says' — it never blanks out a value."),
+        (
+            "p",
+            "SKU. Everything else is an override that beats the website data. A blank cell "
+            "means 'use what the site says' — it never blanks out a value.",
+        ),
         ("h2", "Columns worth knowing about"),
         ("li", "Include? — set to N to keep a row in the sheet without uploading it."),
-        ("li", "Marketplaces — comma-separated codes (US, CA, MX, UK, DE, ...). Blank uses your "
-               ".env default. Note that the EU marketplaces need a second, separate SP-API "
-               "authorization from US/CA/MX."),
-        ("li", "Variations — 'site' builds a proper parent/child family from the ring sizes on "
-               "the product page, so all sizes share one detail page and one review count. "
-               "'none' lists a single standalone item. Use 'none' for earrings and pendants."),
-        ("li", "Price Override — leave blank. The default price is the website price plus your "
-               "PRICE_MARKUP_AMAZON (20%), which absorbs Amazon's referral fee. Filling this in "
-               "bypasses the markup entirely and sets the exact price."),
-        ("li", "UPC / EAN — leave blank. Blank routes the SKU through GTIN exemption, which is "
-               "the correct path for jewelry you manufacture. Never invent a barcode: Amazon "
-               "validates them against the GS1 registry and a fake one can suspend the account."),
-        ("li", "Title / Bullet / Description overrides — leave blank unless you have a reason. "
-               "Generated copy is checked against the extracted specs so it cannot claim a carat "
-               "weight, metal purity, or stone origin the website does not state. Anything you "
-               "type here bypasses that check."),
+        (
+            "li",
+            "Marketplaces — comma-separated codes (US, CA, MX, UK, DE, ...). Blank uses your "
+            ".env default. Note that the EU marketplaces need a second, separate SP-API "
+            "authorization from US/CA/MX.",
+        ),
+        (
+            "li",
+            "Variations — 'site' builds a proper parent/child family from the ring sizes on "
+            "the product page, so all sizes share one detail page and one review count. "
+            "'none' lists a single standalone item. Use 'none' for earrings and pendants.",
+        ),
+        (
+            "li",
+            "Price Override — leave blank. The default price is the website price plus your "
+            "PRICE_MARKUP_AMAZON (20%), which absorbs Amazon's referral fee. Filling this in "
+            "bypasses the markup entirely and sets the exact price.",
+        ),
+        (
+            "li",
+            "UPC / EAN — leave blank. Blank routes the SKU through GTIN exemption, which is "
+            "the correct path for jewelry you manufacture. Never invent a barcode: Amazon "
+            "validates them against the GS1 registry and a fake one can suspend the account.",
+        ),
+        (
+            "li",
+            "Title / Bullet / Description overrides — leave blank unless you have a reason. "
+            "Generated copy is checked against the extracted specs so it cannot claim a carat "
+            "weight, metal purity, or stone origin the website does not state. Anything you "
+            "type here bypasses that check.",
+        ),
         ("h2", "Hover any column header for its full explanation."),
         ("h2", "What to run"),
         ("mono", "anzorlist doctor                    # check credentials and config"),
@@ -252,12 +285,18 @@ def _build_readme(ws: Worksheet) -> None:
         ("mono", "anzorlist amazon validate           # Amazon's own dry-run, creates nothing"),
         ("mono", "anzorlist amazon submit --confirm   # the only command that creates listings"),
         ("h2", "Safety"),
-        ("p", "Nothing is created on Amazon without --confirm, and nothing becomes buyable "
-              "without a second explicit step. Every submission is recorded in a local ledger "
-              "with the exact payload sent, so any listing can be traced or rolled back."),
+        (
+            "p",
+            "Nothing is created on Amazon without --confirm, and nothing becomes buyable "
+            "without a second explicit step. Every submission is recorded in a local ledger "
+            "with the exact payload sent, so any listing can be traced or rolled back.",
+        ),
         ("h2", "Results"),
-        ("p", "After a run, the Upload Results tab is filled in with the status, submission ID, "
-              "and any Amazon-reported issue for each SKU."),
+        (
+            "p",
+            "After a run, the Upload Results tab is filled in with the status, submission ID, "
+            "and any Amazon-reported issue for each SKU.",
+        ),
     ]
 
     styles = {
@@ -272,8 +311,9 @@ def _build_readme(ws: Worksheet) -> None:
         font, height = styles[kind]
         cell = ws.cell(row=r, column=2, value=text)
         cell.font = font
-        cell.alignment = Alignment(wrap_text=True, vertical="top",
-                                   indent=2 if kind in ("li", "mono") else 0)
+        cell.alignment = Alignment(
+            wrap_text=True, vertical="top", indent=2 if kind in ("li", "mono") else 0
+        )
         if height:
             ws.row_dimensions[r].height = height
         elif len(text) > 110:
@@ -320,14 +360,27 @@ def _build_reference(ws: Worksheet) -> None:
     for code, m in sorted(BY_CODE.items()):
         ws.cell(row=r, column=1, value=code)
         ws.cell(row=r, column=2, value=m.marketplace_id)
-        ws.cell(row=r, column=3,
-                value=f"{m.country} — {m.region.value.upper()} region, {m.currency}, {m.domain}")
+        ws.cell(
+            row=r,
+            column=3,
+            value=f"{m.country} — {m.region.value.upper()} region, {m.currency}, {m.domain}",
+        )
         r += 1
 
 
 def _build_results(ws: Worksheet) -> None:
-    headers = ["SKU", "Marketplace", "Child SKU", "Status", "Submission ID",
-               "Issue Code", "Severity", "Message", "Payload", "Timestamp"]
+    headers = [
+        "SKU",
+        "Marketplace",
+        "Child SKU",
+        "Status",
+        "Submission ID",
+        "Issue Code",
+        "Severity",
+        "Message",
+        "Payload",
+        "Timestamp",
+    ]
     widths = [14, 12, 16, 14, 30, 22, 10, 70, 44, 22]
     for i, (h, w) in enumerate(zip(headers, widths, strict=True), start=1):
         cell = ws.cell(row=1, column=i, value=h)
@@ -336,9 +389,11 @@ def _build_results(ws: Worksheet) -> None:
         cell.alignment = Alignment(horizontal="center", wrap_text=True)
         ws.column_dimensions[get_column_letter(i)].width = w
     ws.freeze_panes = "A2"
-    ws.cell(row=2, column=1,
-            value="(filled in automatically after `anzorlist amazon validate` or `submit`)"
-            ).font = _EXAMPLE_FONT
+    ws.cell(
+        row=2,
+        column=1,
+        value="(filled in automatically after `anzorlist amazon validate` or `submit`)",
+    ).font = _EXAMPLE_FONT
 
 
 # --------------------------------------------------------------------------------------
@@ -431,23 +486,29 @@ def read_workbook(path: Path | str) -> ReadResult:
                 key = str(err["loc"][0]) if err["loc"] else "?"
                 col = next((c for c in COLUMNS if c.key == key), None)
                 header = col.header if col else key
-                errors.append(RowError(
-                    row=excel_row,
-                    header=header,
-                    value=payload.get(key),
-                    message=err["msg"].removeprefix("Value error, "),
-                    cell=_cell_ref(index_of.get(header), excel_row),
-                ))
+                errors.append(
+                    RowError(
+                        row=excel_row,
+                        header=header,
+                        value=payload.get(key),
+                        message=err["msg"].removeprefix("Value error, "),
+                        cell=_cell_ref(index_of.get(header), excel_row),
+                    )
+                )
             continue
 
         if row.sku in seen_skus:
-            errors.append(RowError(
-                row=excel_row, header="SKU", value=row.sku,
-                message=f"duplicate SKU — already listed on row {seen_skus[row.sku]}. "
-                        f"Amazon keys listings on seller SKU, so two rows would overwrite "
-                        f"each other.",
-                cell=_cell_ref(index_of.get("SKU"), excel_row),
-            ))
+            errors.append(
+                RowError(
+                    row=excel_row,
+                    header="SKU",
+                    value=row.sku,
+                    message=f"duplicate SKU — already listed on row {seen_skus[row.sku]}. "
+                    f"Amazon keys listings on seller SKU, so two rows would overwrite "
+                    f"each other.",
+                    cell=_cell_ref(index_of.get("SKU"), excel_row),
+                )
+            )
             continue
         seen_skus[row.sku] = excel_row
 
@@ -459,8 +520,12 @@ def read_workbook(path: Path | str) -> ReadResult:
     if unknown:
         log.warning("workbook.unknown_columns", columns=unknown)
     log.info(
-        "workbook.read", path=str(path), rows=len(rows),
-        included=sum(1 for r in rows if r.include), skipped=len(skipped), errors=len(errors),
+        "workbook.read",
+        path=str(path),
+        rows=len(rows),
+        included=sum(1 for r in rows if r.include),
+        skipped=len(skipped),
+        errors=len(errors),
     )
     return ReadResult(rows=rows, errors=errors, skipped=skipped, unknown_headers=unknown)
 
@@ -488,8 +553,15 @@ def _row_payload(
         try:
             payload[col.key] = _coerce(col, raw)
         except (ValueError, InvalidOperation, ArithmeticError) as exc:
-            errors.append(RowError(row=excel_row, header=header, value=raw, message=str(exc),
-                                   cell=_cell_ref(idx, excel_row)))
+            errors.append(
+                RowError(
+                    row=excel_row,
+                    header=header,
+                    value=raw,
+                    message=str(exc),
+                    cell=_cell_ref(idx, excel_row),
+                )
+            )
     return payload, errors
 
 

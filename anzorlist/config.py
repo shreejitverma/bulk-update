@@ -68,9 +68,7 @@ class Settings(BaseSettings):
     # ---- Copy generation ----
     anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     copy_model: str = Field(default="claude-sonnet-5", alias="ANZOR_COPY_MODEL")
-    copy_model_escalation: str = Field(
-        default="claude-opus-5", alias="ANZOR_COPY_MODEL_ESCALATION"
-    )
+    copy_model_escalation: str = Field(default="claude-opus-5", alias="ANZOR_COPY_MODEL_ESCALATION")
 
     # ---- Pricing ----
     markup_amazon: Decimal = Field(default=Decimal("0.20"), alias="PRICE_MARKUP_AMAZON")

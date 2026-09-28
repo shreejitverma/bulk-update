@@ -46,7 +46,7 @@ log = structlog.get_logger(__name__)
 FAMILY_PRODUCT_TYPE: dict[ProductFamily, str] = {
     ProductFamily.RING: "RING",
     ProductFamily.EARRINGS: "EARRING",
-    ProductFamily.PENDANT: "NECKLACE",   # Amazon files pendants under necklaces in most locales
+    ProductFamily.PENDANT: "NECKLACE",  # Amazon files pendants under necklaces in most locales
     ProductFamily.BRACELET: "BRACELET",
     ProductFamily.NECKLACE: "NECKLACE",
     ProductFamily.SET: "JEWELRY_SET",
@@ -98,18 +98,23 @@ def attr(value: Any, marketplace: Marketplace, **extra: Any) -> list[dict[str, A
 def localized(value: str, marketplace: Marketplace) -> list[dict[str, Any]]:
     """A customer-facing text attribute. ``language_tag`` is required on these and its absence
     is reported as a confusing 'invalid attribute' rather than a missing-field error."""
-    return [{
-        "value": value,
-        "language_tag": marketplace.locale,
-        "marketplace_id": marketplace.marketplace_id,
-    }]
+    return [
+        {
+            "value": value,
+            "language_tag": marketplace.locale,
+            "marketplace_id": marketplace.marketplace_id,
+        }
+    ]
 
 
 def multi_localized(values: list[str], marketplace: Marketplace) -> list[dict[str, Any]]:
     """A repeated text attribute such as ``bullet_point``. Order is preserved and meaningful."""
     return [
-        {"value": v, "language_tag": marketplace.locale,
-         "marketplace_id": marketplace.marketplace_id}
+        {
+            "value": v,
+            "language_tag": marketplace.locale,
+            "marketplace_id": marketplace.marketplace_id,
+        }
         for v in values
     ]
 
@@ -117,11 +122,13 @@ def multi_localized(values: list[str], marketplace: Marketplace) -> list[dict[st
 def measure(value: Decimal | float, unit: str, marketplace: Marketplace) -> list[dict[str, Any]]:
     """A dimensional attribute. Amazon requires the unit alongside the magnitude — a bare number
     is rejected, and guessing the unit is how carat weights become gram weights."""
-    return [{
-        "value": float(value),
-        "unit": unit,
-        "marketplace_id": marketplace.marketplace_id,
-    }]
+    return [
+        {
+            "value": float(value),
+            "unit": unit,
+            "marketplace_id": marketplace.marketplace_id,
+        }
+    ]
 
 
 # ---------------------------------------------------------------------------- resolver
@@ -191,13 +198,24 @@ class AmazonMapper:
         variations = self._variations(product, row)
         if variations:
             return self._build_family(
-                product=product, row=row, marketplace=marketplace, copy=copy,
-                quote=quote, image_urls=image_urls, variations=variations,
+                product=product,
+                row=row,
+                marketplace=marketplace,
+                copy=copy,
+                quote=quote,
+                image_urls=image_urls,
+                variations=variations,
             )
-        return [self._build_standalone(
-            product=product, row=row, marketplace=marketplace, copy=copy,
-            quote=quote, image_urls=image_urls,
-        )]
+        return [
+            self._build_standalone(
+                product=product,
+                row=row,
+                marketplace=marketplace,
+                copy=copy,
+                quote=quote,
+                image_urls=image_urls,
+            )
+        ]
 
     # -- variation selection --
 
@@ -217,39 +235,65 @@ class AmazonMapper:
         if wanted:
             wanted_norm = {w.strip().lower() for w in wanted}
             filtered = [
-                v for v in sizing
+                v
+                for v in sizing
                 if v.label.strip().lower() in wanted_norm
                 or (v.value is not None and str(v.value.normalize()) in wanted_norm)
             ]
             if len(filtered) >= 2:
                 return filtered
-            log.warning("mapper.size_override_ignored", sku=product.sku,
-                        requested=wanted, matched=len(filtered),
-                        reason="fewer than 2 sizes matched; using all site sizes")
+            log.warning(
+                "mapper.size_override_ignored",
+                sku=product.sku,
+                requested=wanted,
+                matched=len(filtered),
+                reason="fewer than 2 sizes matched; using all site sizes",
+            )
         return sizing
 
     # -- standalone --
 
     def _build_standalone(
-        self, *, product: Product, row: ListingRow, marketplace: Marketplace,
-        copy: ListingCopy, quote: PriceQuote, image_urls: list[str],
+        self,
+        *,
+        product: Product,
+        row: ListingRow,
+        marketplace: Marketplace,
+        copy: ListingCopy,
+        quote: PriceQuote,
+        image_urls: list[str],
     ) -> BuiltListing:
         resolver = _Resolver(row=row, product=product, settings=self.settings)
         attributes = self._common_attributes(
-            product=product, row=row, marketplace=marketplace, copy=copy,
-            image_urls=image_urls, resolver=resolver,
+            product=product,
+            row=row,
+            marketplace=marketplace,
+            copy=copy,
+            image_urls=image_urls,
+            resolver=resolver,
         )
         attributes.update(self._offer_attributes(row, marketplace, quote))
         return self._finalize(
-            sku=product.sku, product=product, row=row, marketplace=marketplace,
-            attributes=attributes, quote=quote, resolver=resolver,
+            sku=product.sku,
+            product=product,
+            row=row,
+            marketplace=marketplace,
+            attributes=attributes,
+            quote=quote,
+            resolver=resolver,
         )
 
     # -- variation family --
 
     def _build_family(
-        self, *, product: Product, row: ListingRow, marketplace: Marketplace,
-        copy: ListingCopy, quote: PriceQuote, image_urls: list[str],
+        self,
+        *,
+        product: Product,
+        row: ListingRow,
+        marketplace: Marketplace,
+        copy: ListingCopy,
+        quote: PriceQuote,
+        image_urls: list[str],
         variations: list[Variation],
     ) -> list[BuiltListing]:
         theme = AXIS_VARIATION_THEME[variations[0].axis]
@@ -261,35 +305,58 @@ class AmazonMapper:
         # Amazon treat it as a standalone item and the family silently fails to group.
         parent_resolver = _Resolver(row=row, product=product, settings=self.settings)
         parent_attrs = self._common_attributes(
-            product=product, row=row, marketplace=marketplace, copy=copy,
-            image_urls=image_urls, resolver=parent_resolver,
+            product=product,
+            row=row,
+            marketplace=marketplace,
+            copy=copy,
+            image_urls=image_urls,
+            resolver=parent_resolver,
         )
         parent_attrs["parentage_level"] = attr("parent", marketplace)
-        parent_attrs["variation_theme"] = [{
-            "name": theme, "marketplace_id": marketplace.marketplace_id,
-        }]
+        parent_attrs["variation_theme"] = [
+            {
+                "name": theme,
+                "marketplace_id": marketplace.marketplace_id,
+            }
+        ]
         parent = self._finalize(
-            sku=parent_sku, product=product, row=row, marketplace=marketplace,
-            attributes=parent_attrs, quote=None, resolver=parent_resolver,
-            is_parent=True, variation_theme=theme, child_skus=child_skus,
+            sku=parent_sku,
+            product=product,
+            row=row,
+            marketplace=marketplace,
+            attributes=parent_attrs,
+            quote=None,
+            resolver=parent_resolver,
+            is_parent=True,
+            variation_theme=theme,
+            child_skus=child_skus,
         )
 
         listings = [parent]
         for variation, child_sku in zip(variations, child_skus, strict=True):
             child_resolver = _Resolver(row=row, product=product, settings=self.settings)
             child_attrs = self._common_attributes(
-                product=product, row=row, marketplace=marketplace, copy=copy,
-                image_urls=image_urls, resolver=child_resolver,
+                product=product,
+                row=row,
+                marketplace=marketplace,
+                copy=copy,
+                image_urls=image_urls,
+                resolver=child_resolver,
             )
             child_attrs["parentage_level"] = attr("child", marketplace)
-            child_attrs["child_parent_sku_relationship"] = [{
-                "child_relationship_type": "variation",
-                "parent_sku": parent_sku,
-                "marketplace_id": marketplace.marketplace_id,
-            }]
-            child_attrs["variation_theme"] = [{
-                "name": theme, "marketplace_id": marketplace.marketplace_id,
-            }]
+            child_attrs["child_parent_sku_relationship"] = [
+                {
+                    "child_relationship_type": "variation",
+                    "parent_sku": parent_sku,
+                    "marketplace_id": marketplace.marketplace_id,
+                }
+            ]
+            child_attrs["variation_theme"] = [
+                {
+                    "name": theme,
+                    "marketplace_id": marketplace.marketplace_id,
+                }
+            ]
             child_attrs.update(self._size_attributes(variation, product, marketplace))
 
             # Each size carries its own price delta from the site, so the child price is the
@@ -297,14 +364,27 @@ class AmazonMapper:
             child_quote = self._quote_with_delta(quote, variation)
             child_attrs.update(self._offer_attributes(row, marketplace, child_quote))
 
-            listings.append(self._finalize(
-                sku=child_sku, product=product, row=row, marketplace=marketplace,
-                attributes=child_attrs, quote=child_quote, resolver=child_resolver,
-                parent_sku=parent_sku, variation_theme=theme,
-            ))
+            listings.append(
+                self._finalize(
+                    sku=child_sku,
+                    product=product,
+                    row=row,
+                    marketplace=marketplace,
+                    attributes=child_attrs,
+                    quote=child_quote,
+                    resolver=child_resolver,
+                    parent_sku=parent_sku,
+                    variation_theme=theme,
+                )
+            )
 
-        log.info("mapper.family_built", sku=product.sku, marketplace=marketplace.code,
-                 theme=theme, children=len(child_skus))
+        log.info(
+            "mapper.family_built",
+            sku=product.sku,
+            marketplace=marketplace.code,
+            theme=theme,
+            children=len(child_skus),
+        )
         return listings
 
     @staticmethod
@@ -329,8 +409,11 @@ class AmazonMapper:
             currency=quote.currency,
             web_price=quote.web_price,
             price=quantize(quote.price + delta, quote.currency),
-            list_price=quantize(quote.list_price + delta, quote.currency)
-            if quote.list_price is not None else None,
+            list_price=(
+                quantize(quote.list_price + delta, quote.currency)
+                if quote.list_price is not None
+                else None
+            ),
             fee_fraction=quote.fee_fraction,
             estimated_referral_fee=quote.estimated_referral_fee,
             estimated_net=quote.estimated_net,
@@ -353,8 +436,14 @@ class AmazonMapper:
     # -- shared attribute construction --
 
     def _common_attributes(
-        self, *, product: Product, row: ListingRow, marketplace: Marketplace,
-        copy: ListingCopy, image_urls: list[str], resolver: _Resolver,
+        self,
+        *,
+        product: Product,
+        row: ListingRow,
+        marketplace: Marketplace,
+        copy: ListingCopy,
+        image_urls: list[str],
+        resolver: _Resolver,
     ) -> dict[str, Any]:
         a = product.attributes
         attributes: dict[str, Any] = {}
@@ -372,11 +461,13 @@ class AmazonMapper:
 
         # ---- product identifier: GTIN or exemption ----
         if row.upc_ean:
-            attributes["externally_assigned_product_identifier"] = [{
-                "type": _gtin_type(row.upc_ean),
-                "value": row.upc_ean,
-                "marketplace_id": marketplace.marketplace_id,
-            }]
+            attributes["externally_assigned_product_identifier"] = [
+                {
+                    "type": _gtin_type(row.upc_ean),
+                    "value": row.upc_ean,
+                    "marketplace_id": marketplace.marketplace_id,
+                }
+            ]
         else:
             # The GTIN-exemption path. Amazon must have already approved the exemption for this
             # brand and category; the flag asserts it, it does not grant it.
@@ -410,14 +501,16 @@ class AmazonMapper:
             attributes["metal_stamp"] = attr(metal_stamp, marketplace)
 
         gem = resolver.pick(
-            "gem_type", row.gem_type,
+            "gem_type",
+            row.gem_type,
             a.gemstones[0].type.lower() if a.gemstones else None,
         )
         if gem and gem != "none":
             attributes["gem_type"] = attr(gem, marketplace)
 
         carat = resolver.pick(
-            "total_gem_weight", row.total_gem_weight_ct,
+            "total_gem_weight",
+            row.total_gem_weight_ct,
             a.gemstones[0].carat_weight if a.gemstones else None,
         )
         if carat:
@@ -441,15 +534,19 @@ class AmazonMapper:
 
         # ---- media ----
         if image_urls:
-            attributes["main_product_image_locator"] = [{
-                "media_location": image_urls[0],
-                "marketplace_id": marketplace.marketplace_id,
-            }]
-            for i, url in enumerate(image_urls[1:MAX_ALTERNATE_IMAGES + 1], start=1):
-                attributes[f"other_product_image_locator_{i}"] = [{
-                    "media_location": url,
+            attributes["main_product_image_locator"] = [
+                {
+                    "media_location": image_urls[0],
                     "marketplace_id": marketplace.marketplace_id,
-                }]
+                }
+            ]
+            for i, url in enumerate(image_urls[1 : MAX_ALTERNATE_IMAGES + 1], start=1):
+                attributes[f"other_product_image_locator_{i}"] = [
+                    {
+                        "media_location": url,
+                        "marketplace_id": marketplace.marketplace_id,
+                    }
+                ]
 
         return attributes
 
@@ -458,39 +555,57 @@ class AmazonMapper:
     ) -> dict[str, Any]:
         """Price, condition, and availability — the buyable half of a listing."""
         quantity = row.quantity if row.quantity is not None else self.settings.default_quantity
-        handling = (row.handling_time_days if row.handling_time_days is not None
-                    else self.settings.handling_time_days)
+        handling = (
+            row.handling_time_days
+            if row.handling_time_days is not None
+            else self.settings.handling_time_days
+        )
 
         out: dict[str, Any] = {
             "condition_type": attr(row.condition, marketplace),
-            "purchasable_offer": [{
-                "currency": quote.currency,
-                "marketplace_id": marketplace.marketplace_id,
-                "audience": "ALL",
-                "our_price": [{"schedule": [{"value_with_tax": float(quote.price)}]}],
-            }],
-            "fulfillment_availability": [{
-                "fulfillment_channel_code": "DEFAULT",
-                "quantity": quantity,
-                "lead_time_to_ship_max_days": handling,
-                "marketplace_id": marketplace.marketplace_id,
-            }],
+            "purchasable_offer": [
+                {
+                    "currency": quote.currency,
+                    "marketplace_id": marketplace.marketplace_id,
+                    "audience": "ALL",
+                    "our_price": [{"schedule": [{"value_with_tax": float(quote.price)}]}],
+                }
+            ],
+            "fulfillment_availability": [
+                {
+                    "fulfillment_channel_code": "DEFAULT",
+                    "quantity": quantity,
+                    "lead_time_to_ship_max_days": handling,
+                    "marketplace_id": marketplace.marketplace_id,
+                }
+            ],
         }
         if quote.list_price is not None:
-            out["list_price"] = [{
-                "value": float(quote.list_price),
-                "currency": quote.currency,
-                "marketplace_id": marketplace.marketplace_id,
-            }]
+            out["list_price"] = [
+                {
+                    "value": float(quote.list_price),
+                    "currency": quote.currency,
+                    "marketplace_id": marketplace.marketplace_id,
+                }
+            ]
         return out
 
     # -- finalisation --
 
     def _finalize(
-        self, *, sku: str, product: Product, row: ListingRow, marketplace: Marketplace,
-        attributes: dict[str, Any], quote: PriceQuote | None, resolver: _Resolver,
-        is_parent: bool = False, parent_sku: str | None = None,
-        variation_theme: str | None = None, child_skus: list[str] | None = None,
+        self,
+        *,
+        sku: str,
+        product: Product,
+        row: ListingRow,
+        marketplace: Marketplace,
+        attributes: dict[str, Any],
+        quote: PriceQuote | None,
+        resolver: _Resolver,
+        is_parent: bool = False,
+        parent_sku: str | None = None,
+        variation_theme: str | None = None,
+        child_skus: list[str] | None = None,
     ) -> BuiltListing:
         issues: list[ListingIssue] = []
 
@@ -498,32 +613,38 @@ class AmazonMapper:
         # should say so on its face, not only in a log line from an earlier stage.
         for warning in product.warnings:
             if warning.kind == "MissingField" and warning.field.startswith("attributes"):
-                issues.append(ListingIssue(
-                    code="ExtractionGap",
-                    message=f"{warning.field} could not be parsed from the source page "
-                            f"({warning.detail}); the attribute was omitted",
-                    severity="WARNING",  # type: ignore[arg-type]
-                    attribute_names=[warning.field],
-                    source="local",
-                ))
+                issues.append(
+                    ListingIssue(
+                        code="ExtractionGap",
+                        message=f"{warning.field} could not be parsed from the source page "
+                        f"({warning.detail}); the attribute was omitted",
+                        severity="WARNING",  # type: ignore[arg-type]
+                        attribute_names=[warning.field],
+                        source="local",
+                    )
+                )
 
         if not is_parent and "main_product_image_locator" not in attributes:
-            issues.append(ListingIssue(
-                code="NoMainImage",
-                message="no main image URL — Amazon requires one and will suppress the listing "
-                        "without it. Check the media pipeline and image hosting configuration.",
-                source="local",
-            ))
+            issues.append(
+                ListingIssue(
+                    code="NoMainImage",
+                    message="no main image URL — Amazon requires one and will suppress the listing "
+                    "without it. Check the media pipeline and image hosting configuration.",
+                    source="local",
+                )
+            )
 
         if row.uses_gtin_exemption and not self.settings.is_brand_registered:
-            issues.append(ListingIssue(
-                code="GtinExemptionUnverified",
-                message="listing relies on a GTIN exemption, but ANZOR_BRAND_REGISTERED is false. "
-                        "Confirm the exemption is approved for this brand and product type in "
-                        "Seller Central before submitting.",
-                severity="WARNING",  # type: ignore[arg-type]
-                source="policy",
-            ))
+            issues.append(
+                ListingIssue(
+                    code="GtinExemptionUnverified",
+                    message="listing relies on a GTIN exemption, but ANZOR_BRAND_REGISTERED is "
+                    "false. Confirm the exemption is approved for this brand and product type in "
+                    "Seller Central before submitting.",
+                    severity="WARNING",  # type: ignore[arg-type]
+                    source="policy",
+                )
+            )
 
         payload_hash = hashlib.sha256(
             json.dumps(attributes, sort_keys=True, default=str).encode()
@@ -537,16 +658,24 @@ class AmazonMapper:
             marketplace_code=marketplace.code,
             product_type=self.product_type(product, row),
             attributes=attributes,
-            offer=OfferTerms(
-                price=quote.price,
-                currency=quote.currency,
-                list_price=quote.list_price,
-                quantity=(row.quantity if row.quantity is not None
-                          else self.settings.default_quantity),
-                handling_time_days=(row.handling_time_days if row.handling_time_days is not None
-                                    else self.settings.handling_time_days),
-                condition=row.condition,
-            ) if quote is not None else None,
+            offer=(
+                OfferTerms(
+                    price=quote.price,
+                    currency=quote.currency,
+                    list_price=quote.list_price,
+                    quantity=(
+                        row.quantity if row.quantity is not None else self.settings.default_quantity
+                    ),
+                    handling_time_days=(
+                        row.handling_time_days
+                        if row.handling_time_days is not None
+                        else self.settings.handling_time_days
+                    ),
+                    condition=row.condition,
+                )
+                if quote is not None
+                else None
+            ),
             is_parent=is_parent,
             variation_theme=variation_theme,
             child_skus=child_skus or [],
@@ -557,9 +686,14 @@ class AmazonMapper:
             payload_hash=payload_hash,
             built_at=datetime.now(timezone.utc),
         )
-        log.debug("mapper.built", sku=sku, marketplace=marketplace.code,
-                  attributes=len(attributes), issues=len(issues),
-                  provenance=resolver.provenance)
+        log.debug(
+            "mapper.built",
+            sku=sku,
+            marketplace=marketplace.code,
+            attributes=len(attributes),
+            issues=len(issues),
+            provenance=resolver.provenance,
+        )
         return listing
 
 

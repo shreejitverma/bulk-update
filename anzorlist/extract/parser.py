@@ -50,9 +50,26 @@ _ID_PRODUCT_INPUT_RE = re.compile(r'name=["\']?idProduct["\']?\s+value=["\']?(\d
 _CARAT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:ct|cts|cwt|carat)", re.IGNORECASE)
 
 GEM_TYPES = (
-    "Diamond", "Sapphire", "Ruby", "Emerald", "Pearl", "Topaz", "Amethyst", "Garnet",
-    "Aquamarine", "Opal", "Tanzanite", "Morganite", "Citrine", "Peridot", "Tourmaline",
-    "Onyx", "Turquoise", "Jade", "Moissanite", "Zircon",
+    "Diamond",
+    "Sapphire",
+    "Ruby",
+    "Emerald",
+    "Pearl",
+    "Topaz",
+    "Amethyst",
+    "Garnet",
+    "Aquamarine",
+    "Opal",
+    "Tanzanite",
+    "Morganite",
+    "Citrine",
+    "Peridot",
+    "Tourmaline",
+    "Onyx",
+    "Turquoise",
+    "Jade",
+    "Moissanite",
+    "Zircon",
 )
 
 
@@ -489,9 +506,7 @@ class ProductParser:
                         except InvalidOperation:
                             value = None
                     unit = "in" if axis in {"chain_length", "bracelet_length", "length"} else None
-                    key = self._prov(
-                        f"size_options[{opt_id}]", f"OPTidOption{gid} ({des})", text
-                    )
+                    key = self._prov(f"size_options[{opt_id}]", f"OPTidOption{gid} ({des})", text)
                     variations.append(
                         Variation(
                             axis=axis or "option",

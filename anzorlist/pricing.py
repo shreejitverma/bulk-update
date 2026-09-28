@@ -35,7 +35,7 @@ CENT = Decimal("0.01")
 # Amazon fine-jewelry referral fee, US. Tiered: the lower rate applies to the portion above the
 # breakpoint. Used for the informational net-proceeds estimate, not to set the price itself.
 JEWELRY_FEE_BREAKPOINT = Decimal("250.00")
-JEWELRY_FEE_LOW = Decimal("0.05")   # portion above the breakpoint
+JEWELRY_FEE_LOW = Decimal("0.05")  # portion above the breakpoint
 JEWELRY_FEE_HIGH = Decimal("0.20")  # portion up to the breakpoint
 MIN_REFERRAL_FEE = Decimal("2.00")
 
@@ -63,8 +63,10 @@ class PriceQuote:
 
     def explain(self) -> str:
         if self.source == "override":
-            return (f"{self.marketplace}: {self.currency} {self.price} (manual override; "
-                    f"est. fee {self.estimated_referral_fee}, net {self.estimated_net})")
+            return (
+                f"{self.marketplace}: {self.currency} {self.price} (manual override; "
+                f"est. fee {self.estimated_referral_fee}, net {self.estimated_net})"
+            )
         return (
             f"{self.marketplace}: web {self.web_price} / (1 - {self.fee_fraction}) = "
             f"{self.currency} {self.price}  "
@@ -86,8 +88,10 @@ def estimate_referral_fee(price: Decimal) -> Decimal:
     if price <= JEWELRY_FEE_BREAKPOINT:
         fee = price * JEWELRY_FEE_HIGH
     else:
-        fee = (JEWELRY_FEE_BREAKPOINT * JEWELRY_FEE_HIGH
-               + (price - JEWELRY_FEE_BREAKPOINT) * JEWELRY_FEE_LOW)
+        fee = (
+            JEWELRY_FEE_BREAKPOINT * JEWELRY_FEE_HIGH
+            + (price - JEWELRY_FEE_BREAKPOINT) * JEWELRY_FEE_LOW
+        )
     return quantize(max(fee, MIN_REFERRAL_FEE))
 
 
@@ -164,9 +168,13 @@ def price_for(
         if list_price <= price:
             # A strike-through that is not actually higher is a false discount claim, which
             # Amazon suppresses and the FTC treats as deceptive. Drop it rather than ship it.
-            log.warning("pricing.list_price_dropped", marketplace=marketplace.code,
-                        list_price=str(list_price), price=str(price),
-                        reason="list price not above selling price")
+            log.warning(
+                "pricing.list_price_dropped",
+                marketplace=marketplace.code,
+                list_price=str(list_price),
+                price=str(price),
+                reason="list price not above selling price",
+            )
             list_price = None
 
     fee = estimate_referral_fee(price) if marketplace.currency == "USD" else Decimal("0.00")
@@ -181,6 +189,7 @@ def price_for(
         estimated_net=quantize(price - fee, marketplace.currency),
         source=source,
     )
-    log.debug("pricing.quote", **{"marketplace": marketplace.code, "price": str(price),
-                                  "source": source})
+    log.debug(
+        "pricing.quote", **{"marketplace": marketplace.code, "price": str(price), "source": source}
+    )
     return quote

@@ -115,8 +115,12 @@ class DefinitionsClient:
             DEFINITIONS_BASE, operation="searchDefinitionsProductTypes", params=params
         )
         types = payload.get("productTypes", []) if isinstance(payload, dict) else []
-        log.info("definitions.searched", marketplace=marketplace.code, count=len(types),
-                 keywords=keywords)
+        log.info(
+            "definitions.searched",
+            marketplace=marketplace.code,
+            count=len(types),
+            keywords=keywords,
+        )
         return list(types)
 
     # -- schema fetch + cache --
@@ -160,17 +164,28 @@ class DefinitionsClient:
             raise SchemaUnavailable(product_type, marketplace, path)
 
         pts = self._fetch_schema(product_type, marketplace, requirements)
-        path.write_text(json.dumps(
-            {"schema": pts.schema, "displayName": pts.display_name, "version": pts.version,
-             "productType": product_type, "marketplaceId": marketplace.marketplace_id,
-             "requirements": requirements},
-            indent=2,
-        ))
+        path.write_text(
+            json.dumps(
+                {
+                    "schema": pts.schema,
+                    "displayName": pts.display_name,
+                    "version": pts.version,
+                    "productType": product_type,
+                    "marketplaceId": marketplace.marketplace_id,
+                    "requirements": requirements,
+                },
+                indent=2,
+            )
+        )
         pts.path = path
         self._memo[key] = pts
-        log.info("definitions.schema_cached", product_type=product_type,
-                 marketplace=marketplace.code, path=str(path),
-                 required=len(pts.required_attributes))
+        log.info(
+            "definitions.schema_cached",
+            product_type=product_type,
+            marketplace=marketplace.code,
+            path=str(path),
+            required=len(pts.required_attributes),
+        )
         return pts
 
     def _fetch_schema(
@@ -240,11 +255,14 @@ def validate_attributes(
     for err in sorted(validator.iter_errors(attributes), key=lambda e: list(e.absolute_path)):
         issues.append(_translate(err))
         if len(issues) >= max_issues:
-            issues.append(AttributeIssue(
-                attribute="", path="",
-                message=f"... more issues suppressed after {max_issues}; fix these first.",
-                severity="INFO",
-            ))
+            issues.append(
+                AttributeIssue(
+                    attribute="",
+                    path="",
+                    message=f"... more issues suppressed after {max_issues}; fix these first.",
+                    severity="INFO",
+                )
+            )
             break
     return issues
 
@@ -265,13 +283,19 @@ def _translate(err: JsonSchemaError) -> AttributeIssue:
     if err.validator == "enum":
         allowed = err.validator_value if isinstance(err.validator_value, list) else []
         shown = ", ".join(map(str, allowed[:12])) + (" ..." if len(allowed) > 12 else "")
-        return AttributeIssue(attribute=attribute, path=path,
-                              message=f"value not allowed here; Amazon accepts: {shown}")
+        return AttributeIssue(
+            attribute=attribute,
+            path=path,
+            message=f"value not allowed here; Amazon accepts: {shown}",
+        )
     if err.validator == "maxLength":
-        return AttributeIssue(attribute=attribute, path=path,
-                              message=f"too long — Amazon's limit is {err.validator_value} "
-                                      f"characters")
+        return AttributeIssue(
+            attribute=attribute,
+            path=path,
+            message=f"too long — Amazon's limit is {err.validator_value} characters",
+        )
     if err.validator == "type":
-        return AttributeIssue(attribute=attribute, path=path,
-                              message=f"wrong type — expected {err.validator_value}")
+        return AttributeIssue(
+            attribute=attribute, path=path, message=f"wrong type — expected {err.validator_value}"
+        )
     return AttributeIssue(attribute=attribute, path=path, message=str(err.message))

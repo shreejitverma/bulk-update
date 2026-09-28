@@ -90,27 +90,64 @@ def doctor() -> None:
         mark = "[green]OK[/]" if ok else ("[yellow]—[/]" if ok is None else "[red]MISSING[/]")
         table.add_row(name, mark, detail)
 
-    add("workbook", s.workbook_path.exists(),
-        str(s.workbook_path) if s.workbook_path.exists()
-        else f"{s.workbook_path} not found — run `anzorlist workbook init`")
+    add(
+        "workbook",
+        s.workbook_path.exists(),
+        (
+            str(s.workbook_path)
+            if s.workbook_path.exists()
+            else f"{s.workbook_path} not found — run `anzorlist workbook init`"
+        ),
+    )
     add("brand", bool(s.brand_name), f"{s.brand_name} (manufacturer: {s.manufacturer})")
-    add("brand registry", s.is_brand_registered or None,
-        "enrolled" if s.is_brand_registered
-        else "not enrolled — GTIN exemption needs approval in Seller Central")
+    add(
+        "brand registry",
+        s.is_brand_registered or None,
+        (
+            "enrolled"
+            if s.is_brand_registered
+            else "not enrolled — GTIN exemption needs approval in Seller Central"
+        ),
+    )
 
-    add("Anthropic API key", s.anthropic_api_key is not None,
-        f"copy model {s.copy_model}, escalates to {s.copy_model_escalation}"
-        if s.anthropic_api_key else "copy generation will use the spec-sheet fallback")
+    add(
+        "Anthropic API key",
+        s.anthropic_api_key is not None,
+        (
+            f"copy model {s.copy_model}, escalates to {s.copy_model_escalation}"
+            if s.anthropic_api_key
+            else "copy generation will use the spec-sheet fallback"
+        ),
+    )
 
-    r2_ok = all([s.r2_account_id, s.r2_access_key_id, s.r2_secret_access_key,
-                 s.r2_bucket, s.r2_public_base_url])
-    add("image hosting (R2)", r2_ok,
-        f"bucket {s.r2_bucket} → {s.r2_public_base_url}" if r2_ok
-        else "not configured — listings cannot carry images without it")
+    r2_ok = all(
+        [
+            s.r2_account_id,
+            s.r2_access_key_id,
+            s.r2_secret_access_key,
+            s.r2_bucket,
+            s.r2_public_base_url,
+        ]
+    )
+    add(
+        "image hosting (R2)",
+        r2_ok,
+        (
+            f"bucket {s.r2_bucket} → {s.r2_public_base_url}"
+            if r2_ok
+            else "not configured — listings cannot carry images without it"
+        ),
+    )
 
-    add("SP-API app", s.has_spapi_credentials(),
-        "LWA client id and secret present" if s.has_spapi_credentials()
-        else "register a developer profile and create an SP-API app (see docs/RUNBOOK.md)")
+    add(
+        "SP-API app",
+        s.has_spapi_credentials(),
+        (
+            "LWA client id and secret present"
+            if s.has_spapi_credentials()
+            else "register a developer profile and create an SP-API app (see docs/RUNBOOK.md)"
+        ),
+    )
 
     markets = resolve_all(s.marketplaces)
     for region, group in group_by_region(markets).items():
@@ -122,9 +159,15 @@ def doctor() -> None:
         except MissingCredential as exc:
             add(f"auth: {region.value.upper()}", False, f"{codes} — {exc.var} is not set")
 
-    add("live writes", None,
-        "[green]ENABLED[/] — submit can create listings" if s.allow_live
-        else "disabled (ANZOR_ALLOW_LIVE=false); submit will refuse")
+    add(
+        "live writes",
+        None,
+        (
+            "[green]ENABLED[/] — submit can create listings"
+            if s.allow_live
+            else "disabled (ANZOR_ALLOW_LIVE=false); submit will refuse"
+        ),
+    )
 
     console.print(table)
     schemas = sorted(s.schema_cache_dir.glob("*.json")) if s.schema_cache_dir.exists() else []
@@ -147,13 +190,15 @@ def workbook_init(
     target = path or s.workbook_path
     existed = target.exists()
     out = write_template(target, with_examples=not no_examples, preserve_existing=True)
-    console.print(Panel.fit(
-        f"[bold green]{'Regenerated' if existed else 'Created'}[/] {out}\n\n"
-        "Open the [bold]Products[/] tab and fill in the [bold]SKU[/] column.\n"
-        "Everything else is optional — hover any header for what it does.\n\n"
-        "Then run: [cyan]anzorlist workbook validate[/]",
-        title="workbook ready",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold green]{'Regenerated' if existed else 'Created'}[/] {out}\n\n"
+            "Open the [bold]Products[/] tab and fill in the [bold]SKU[/] column.\n"
+            "Everything else is optional — hover any header for what it does.\n\n"
+            "Then run: [cyan]anzorlist workbook validate[/]",
+            title="workbook ready",
+        )
+    )
 
 
 @workbook_app.command("validate")
@@ -218,8 +263,10 @@ def build(
     s = get_settings()
     result = read_workbook(s.workbook_path)
     if result.errors:
-        err_console.print(f"[red]The workbook has {len(result.errors)} error(s).[/] "
-                          "Run `anzorlist workbook validate` first.")
+        err_console.print(
+            f"[red]The workbook has {len(result.errors)} error(s).[/] "
+            "Run `anzorlist workbook validate` first."
+        )
         raise typer.Exit(1)
 
     rows = result.included()
@@ -228,8 +275,9 @@ def build(
         rows = [r for r in rows if r.sku in wanted]
         missing = wanted - {r.sku for r in rows}
         if missing:
-            err_console.print(f"[yellow]Not in the workbook (or Include = N):[/] "
-                              f"{', '.join(sorted(missing))}")
+            err_console.print(
+                f"[yellow]Not in the workbook (or Include = N):[/] {', '.join(sorted(missing))}"
+            )
     if not rows:
         err_console.print("[red]Nothing to build.[/] Add SKUs to the Products tab.")
         raise typer.Exit(1)
@@ -285,8 +333,10 @@ def _print_build_report(report: BuildReport, s: Settings) -> None:
     )
     console.print(f"Payloads written to [cyan]{s.build_dir}/[/]")
     if c["listings_submittable"]:
-        console.print("\nNext: [cyan]anzorlist amazon validate[/] "
-                      "(Amazon checks the payload and creates nothing)")
+        console.print(
+            "\nNext: [cyan]anzorlist amazon validate[/] "
+            "(Amazon checks the payload and creates nothing)"
+        )
 
 
 # =====================================================================  amazon
@@ -297,13 +347,15 @@ def _pool_and_settings():  # type: ignore[no-untyped-def]
 
     s = get_settings()
     if not s.has_spapi_credentials():
-        err_console.print(Panel.fit(
-            "[red]No SP-API credentials.[/]\n\n"
-            "This command needs a registered SP-API application. Until then, everything up to "
-            "and including [cyan]anzorlist build[/] works offline.\n\n"
-            "Setup steps: [cyan]docs/RUNBOOK.md[/]",
-            title="credentials required",
-        ))
+        err_console.print(
+            Panel.fit(
+                "[red]No SP-API credentials.[/]\n\n"
+                "This command needs a registered SP-API application. Until then, everything up to "
+                "and including [cyan]anzorlist build[/] works offline.\n\n"
+                "Setup steps: [cyan]docs/RUNBOOK.md[/]",
+                title="credentials required",
+            )
+        )
         raise typer.Exit(2)
     return ClientPool(s), s
 
@@ -318,19 +370,21 @@ def _load_built(s: Settings, skus: list[str] | None) -> list[BuiltListing]:
         data = json.loads(path.read_text())
         if wanted and data["sku"].upper() not in wanted:
             continue
-        listings.append(BuiltListing(
-            sku=data["sku"],
-            parent_sku=data.get("parentSku"),
-            source_sku=data.get("sku"),
-            marketplace_id=resolve(data["marketplace"]).marketplace_id,
-            marketplace_code=data["marketplace"],
-            product_type=data["productType"],
-            requirements=data.get("requirements", "LISTING"),
-            attributes=data["body"]["attributes"],
-            is_parent=data.get("isParent", False),
-            payload_hash=data.get("payloadHash", ""),
-            source_url=data.get("sourceUrl", ""),
-        ))
+        listings.append(
+            BuiltListing(
+                sku=data["sku"],
+                parent_sku=data.get("parentSku"),
+                source_sku=data.get("sku"),
+                marketplace_id=resolve(data["marketplace"]).marketplace_id,
+                marketplace_code=data["marketplace"],
+                product_type=data["productType"],
+                requirements=data.get("requirements", "LISTING"),
+                attributes=data["body"]["attributes"],
+                is_parent=data.get("isParent", False),
+                payload_hash=data.get("payloadHash", ""),
+                source_url=data.get("sourceUrl", ""),
+            )
+        )
     # Parents must be created before their children reference them.
     listings.sort(key=lambda x: (not x.is_parent,))
     return listings
@@ -358,16 +412,20 @@ def amazon_sync_schemas(
         for pt in types:
             try:
                 schema = client.get_schema(pt, market, refresh=True)
-                console.print(f"  [green]✓[/] {pt:<16} {len(schema.required_attributes)} required, "
-                              f"{len(schema.known_attributes)} total attributes")
+                console.print(
+                    f"  [green]✓[/] {pt:<16} {len(schema.required_attributes)} required, "
+                    f"{len(schema.known_attributes)} total attributes"
+                )
                 ok += 1
             except Exception as exc:  # noqa: BLE001
                 failed.append(pt)
                 console.print(f"  [yellow]✗[/] {pt:<16} {str(exc)[:80]}")
         console.print(f"\n[bold]{ok}[/] cached to [cyan]{s.schema_cache_dir}[/]")
         if failed:
-            console.print(f"[yellow]Not available in {market.code}:[/] {', '.join(failed)} "
-                          "— remove these from the workbook's dropdown if you never use them.")
+            console.print(
+                f"[yellow]Not available in {market.code}:[/] {', '.join(failed)} "
+                "— remove these from the workbook's dropdown if you never use them."
+            )
     finally:
         pool.close()
 
@@ -389,8 +447,7 @@ def amazon_preflight(
         for market in markets:
             client = PreflightClient(pool.for_region(market.region))
             report = client.run(market, sample_asin=asin)
-            console.print(Panel(report.render(),
-                                border_style="red" if report.blocked else "green"))
+            console.print(Panel(report.render(), border_style="red" if report.blocked else "green"))
             blocked = blocked or report.blocked
         if blocked:
             raise typer.Exit(1)
@@ -450,22 +507,26 @@ def amazon_submit(
 
     s = get_settings()
     if not confirm:
-        err_console.print(Panel.fit(
-            "[red]--confirm is required.[/]\n\n"
-            "This command creates real listings on your Amazon account.\n"
-            "Run [cyan]anzorlist amazon validate[/] first — it exercises the identical payload "
-            "through Amazon's validator and creates nothing.",
-            title="refusing to submit",
-        ))
+        err_console.print(
+            Panel.fit(
+                "[red]--confirm is required.[/]\n\n"
+                "This command creates real listings on your Amazon account.\n"
+                "Run [cyan]anzorlist amazon validate[/] first — it exercises the identical payload "
+                "through Amazon's validator and creates nothing.",
+                title="refusing to submit",
+            )
+        )
         raise typer.Exit(2)
     if not s.allow_live:
-        err_console.print(Panel.fit(
-            "[red]ANZOR_ALLOW_LIVE is not enabled.[/]\n\n"
-            "Both gates must be open: set [cyan]ANZOR_ALLOW_LIVE=true[/] in .env and pass "
-            "--confirm. They are separate on purpose — neither a stray flag nor a stale config "
-            "value can cause a write on its own.",
-            title="refusing to submit",
-        ))
+        err_console.print(
+            Panel.fit(
+                "[red]ANZOR_ALLOW_LIVE is not enabled.[/]\n\n"
+                "Both gates must be open: set [cyan]ANZOR_ALLOW_LIVE=true[/] in .env and pass "
+                "--confirm. They are separate on purpose — neither a stray flag nor a stale config "
+                "value can cause a write on its own.",
+                title="refusing to submit",
+            )
+        )
         raise typer.Exit(2)
 
     pool, _ = _pool_and_settings()
@@ -478,8 +539,10 @@ def amazon_submit(
         pending = [x for x in listings if ledger.needs_submission(x)]
         unchanged = len(listings) - len(pending)
         if unchanged:
-            console.print(f"[dim]{unchanged} listing(s) unchanged since the last accepted "
-                          f"submission — skipping.[/]")
+            console.print(
+                f"[dim]{unchanged} listing(s) unchanged since the last accepted "
+                f"submission — skipping.[/]"
+            )
         if not pending:
             console.print("[green]Everything is already up to date.[/]")
             return
@@ -541,8 +604,14 @@ def amazon_status(
                 table.add_column(col, overflow="fold")
             for h in history:
                 issues = json.loads(h["issues_json"])
-                table.add_row(h["submitted_at"][:19], h["marketplace_id"][:14], h["mode"],
-                              h["status"], (h["submission_id"] or "")[:20], str(len(issues)))
+                table.add_row(
+                    h["submitted_at"][:19],
+                    h["marketplace_id"][:14],
+                    h["mode"],
+                    h["status"],
+                    (h["submission_id"] or "")[:20],
+                    str(len(issues)),
+                )
             console.print(table)
             return
 
@@ -556,8 +625,10 @@ def amazon_status(
         live = ledger.live_skus()
         console.print(f"\n[bold]{len(live)}[/] SKU(s) believed to exist on Amazon.")
         for run in ledger.recent_runs(5):
-            console.print(f"  [dim]{run['started_at'][:19]}  {run['command']:<18} "
-                          f"{run['mode']:<20} {run.get('counts_json') or ''}[/]")
+            console.print(
+                f"  [dim]{run['started_at'][:19]}  {run['command']:<18} "
+                f"{run['mode']:<20} {run.get('counts_json') or ''}[/]"
+            )
 
 
 @amazon_app.command("delete")
@@ -576,8 +647,10 @@ def amazon_delete(
 
     market = resolve(marketplace)
     console.print(f"[bold red]About to DELETE {len(skus)} listing(s) from {market.code}.[/]")
-    console.print("[dim]This removes your offer. Sales history and reviews on the ASIN are "
-                  "not recoverable by re-listing.[/]")
+    console.print(
+        "[dim]This removes your offer. Sales history and reviews on the ASIN are "
+        "not recoverable by re-listing.[/]"
+    )
     if not typer.confirm("Type-check: proceed with deletion?", default=False):
         console.print("Aborted.")
         raise typer.Exit(0)

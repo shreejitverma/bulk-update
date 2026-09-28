@@ -39,15 +39,50 @@ MAX_SEARCH_TERMS_BYTES = 250
 # Claims that require an explicit qualifier from the source. Mapping is
 # {claim word: qualifiers that must NOT be contradicted}.
 ORIGIN_TERMS = ("natural", "genuine", "real", "earth-mined", "earth mined", "mined")
-SYNTHETIC_TERMS = ("lab-grown", "lab grown", "laboratory-grown", "synthetic", "created",
-                   "simulated", "imitation", "cubic zirconia", "cz", "moissanite")
+SYNTHETIC_TERMS = (
+    "lab-grown",
+    "lab grown",
+    "laboratory-grown",
+    "synthetic",
+    "created",
+    "simulated",
+    "imitation",
+    "cubic zirconia",
+    "cz",
+    "moissanite",
+)
 PLATING_TERMS = ("plated", "filled", "vermeil", "overlay", "bonded", "electroplate")
 
-GEM_WORDS = ("diamond", "sapphire", "ruby", "emerald", "pearl", "topaz", "amethyst",
-             "garnet", "aquamarine", "opal", "tanzanite", "morganite", "citrine",
-             "peridot", "tourmaline", "onyx", "turquoise", "jade")
-METAL_WORDS = ("gold", "platinum", "silver", "palladium", "titanium", "tungsten",
-               "stainless steel", "rhodium")
+GEM_WORDS = (
+    "diamond",
+    "sapphire",
+    "ruby",
+    "emerald",
+    "pearl",
+    "topaz",
+    "amethyst",
+    "garnet",
+    "aquamarine",
+    "opal",
+    "tanzanite",
+    "morganite",
+    "citrine",
+    "peridot",
+    "tourmaline",
+    "onyx",
+    "turquoise",
+    "jade",
+)
+METAL_WORDS = (
+    "gold",
+    "platinum",
+    "silver",
+    "palladium",
+    "titanium",
+    "tungsten",
+    "stainless steel",
+    "rhodium",
+)
 
 # Numbers that carry no product claim and so are exempt from traceability.
 _BENIGN_NUMBER = re.compile(r"\b(?:1|2|3|4|5|6|7|8|9|10|100)\b")
@@ -113,9 +148,11 @@ class FactSheet:
         return _norm_number(value) in self.numbers
 
     def summary(self) -> str:
-        return (f"gems={sorted(self.gems)} metals={sorted(self.metals)} "
-                f"numbers={len(self.numbers)} synthetic={self.mentions_synthetic} "
-                f"plated={self.mentions_plating}")
+        return (
+            f"gems={sorted(self.gems)} metals={sorted(self.metals)} "
+            f"numbers={len(self.numbers)} synthetic={self.mentions_synthetic} "
+            f"plated={self.mentions_plating}"
+        )
 
 
 def _norm_number(raw: str) -> str:
@@ -145,8 +182,13 @@ def validate_copy(
     _check_description(description, facts, report)
     _check_search_terms(search_terms, title, report)
 
-    log.info("copy.validated", sku=product.sku, ok=report.ok, errors=len(report.errors),
-             facts=facts.summary())
+    log.info(
+        "copy.validated",
+        sku=product.sku,
+        ok=report.ok,
+        errors=len(report.errors),
+        facts=facts.summary(),
+    )
     return report
 
 
@@ -158,16 +200,26 @@ def _check_title(title: str, facts: FactSheet, report: ValidationReport) -> None
         report.add("title", "Empty", "title is empty")
         return
     if len(title) > MAX_TITLE_LEN:
-        report.add("title", "TooLong",
-                   f"{len(title)} chars; Amazon's fine-jewelry limit is {MAX_TITLE_LEN}")
+        report.add(
+            "title",
+            "TooLong",
+            f"{len(title)} chars; Amazon's fine-jewelry limit is {MAX_TITLE_LEN}",
+        )
     if len(title) < 20:
-        report.add("title", "TooShort", f"{len(title)} chars is too short to be informative",
-                   severity="WARNING")
+        report.add(
+            "title",
+            "TooShort",
+            f"{len(title)} chars is too short to be informative",
+            severity="WARNING",
+        )
     if title.isupper():
         report.add("title", "AllCaps", "Amazon rejects all-caps titles")
     if _FORBIDDEN_TITLE_CHARS.search(title):
-        report.add("title", "ForbiddenChar",
-                   "contains a character Amazon disallows in titles (! $ ? _ { } ^ ~)")
+        report.add(
+            "title",
+            "ForbiddenChar",
+            "contains a character Amazon disallows in titles (! $ ? _ { } ^ ~)",
+        )
     _check_claims("title", title, facts, report)
 
 
@@ -182,8 +234,9 @@ def _check_bullet(bullet: str, index: int, facts: FactSheet, report: ValidationR
 
 def _check_description(description: str, facts: FactSheet, report: ValidationReport) -> None:
     if len(description) > MAX_DESCRIPTION_LEN:
-        report.add("description", "TooLong",
-                   f"{len(description)} chars; keep under {MAX_DESCRIPTION_LEN}")
+        report.add(
+            "description", "TooLong", f"{len(description)} chars; keep under {MAX_DESCRIPTION_LEN}"
+        )
     _check_claims("description", description, facts, report)
 
 
@@ -192,15 +245,19 @@ def _check_search_terms(terms: str, title: str, report: ValidationReport) -> Non
         return
     size = len(terms.encode("utf-8"))
     if size > MAX_SEARCH_TERMS_BYTES:
-        report.add("search_terms", "TooLong",
-                   f"{size} bytes; the limit is {MAX_SEARCH_TERMS_BYTES}")
+        report.add(
+            "search_terms", "TooLong", f"{size} bytes; the limit is {MAX_SEARCH_TERMS_BYTES}"
+        )
     title_words = {w.lower().strip(",.") for w in title.split()}
     repeated = [w for w in terms.replace(",", " ").split() if w.lower() in title_words]
     if repeated:
-        report.add("search_terms", "Duplicated",
-                   f"repeats words already in the title ({', '.join(sorted(set(repeated))[:5])}); "
-                   f"Amazon ignores duplicates, so the bytes are wasted",
-                   severity="WARNING")
+        report.add(
+            "search_terms",
+            "Duplicated",
+            f"repeats words already in the title ({', '.join(sorted(set(repeated))[:5])}); "
+            f"Amazon ignores duplicates, so the bytes are wasted",
+            severity="WARNING",
+        )
 
 
 # ---------------------------------------------------------------------------- claim checks
@@ -214,50 +271,79 @@ def _check_claims(field_name: str, text: str, facts: FactSheet, report: Validati
 
     promo = has_promotional_language(text)
     if promo:
-        report.add(field_name, "Promotional",
-                   f"contains promotional language Amazon prohibits: {', '.join(promo)}")
+        report.add(
+            field_name,
+            "Promotional",
+            f"contains promotional language Amazon prohibits: {', '.join(promo)}",
+        )
 
     # 1. Numeric claims must be traceable to the source specs.
     for number in _NUMBER.findall(text):
         if _BENIGN_NUMBER.fullmatch(number):
             continue
         if not facts.supports_number(number):
-            report.add(field_name, "UnsupportedNumber",
-                       f"the figure {number!r} does not appear anywhere in the product's Item "
-                       f"Details. Use only measurements stated on the source page.")
+            report.add(
+                field_name,
+                "UnsupportedNumber",
+                f"the figure {number!r} does not appear anywhere in the product's Item "
+                f"Details. Use only measurements stated on the source page.",
+            )
 
     # 2. Gemstones must be ones the source names.
     for gem in GEM_WORDS:
         if re.search(rf"\b{re.escape(gem)}s?\b", lowered) and gem not in facts.gems:
-            report.add(field_name, "UnsupportedGemstone",
-                       f"mentions {gem!r}, which the source page does not list")
+            report.add(
+                field_name,
+                "UnsupportedGemstone",
+                f"mentions {gem!r}, which the source page does not list",
+            )
 
     # 3. Metals must be ones the source names.
     for metal in METAL_WORDS:
         if re.search(rf"\b{re.escape(metal)}\b", lowered) and metal not in facts.metals:
-            report.add(field_name, "UnsupportedMetal",
-                       f"mentions {metal!r}, which the source page does not list")
+            report.add(
+                field_name,
+                "UnsupportedMetal",
+                f"mentions {metal!r}, which the source page does not list",
+            )
 
     # 4. FTC: never upgrade a synthetic/simulated stone to natural or genuine.
     if facts.mentions_synthetic:
         for term in ORIGIN_TERMS:
             if re.search(rf"\b{re.escape(term)}\b", lowered):
-                report.add(field_name, "FtcOriginUpgrade",
-                           f"claims {term!r} while the source describes a lab-grown or simulated "
-                           f"stone. Under the FTC Jewelry Guides this is a deceptive claim.")
+                report.add(
+                    field_name,
+                    "FtcOriginUpgrade",
+                    f"claims {term!r} while the source describes a lab-grown or simulated "
+                    f"stone. Under the FTC Jewelry Guides this is a deceptive claim.",
+                )
 
     # 5. FTC: never drop the plating qualifier — "gold plated" is not "gold".
     if facts.mentions_plating:
         mentions_metal = any(re.search(rf"\b{re.escape(m)}\b", lowered) for m in facts.metals)
         keeps_qualifier = any(t in lowered for t in PLATING_TERMS)
         if mentions_metal and not keeps_qualifier:
-            report.add(field_name, "FtcPlatingOmitted",
-                       "names the metal without the plating qualifier the source states. "
-                       "'Gold plated' must never be shortened to 'gold'.")
+            report.add(
+                field_name,
+                "FtcPlatingOmitted",
+                "names the metal without the plating qualifier the source states. "
+                "'Gold plated' must never be shortened to 'gold'.",
+            )
 
     # 6. Absolute superlatives are unverifiable claims regardless of category.
-    for word in ("finest", "highest quality", "flawless", "investment grade", "certified",
-                 "appraised at", "conflict-free", "ethically sourced"):
+    for word in (
+        "finest",
+        "highest quality",
+        "flawless",
+        "investment grade",
+        "certified",
+        "appraised at",
+        "conflict-free",
+        "ethically sourced",
+    ):
         if word in lowered and word not in facts.corpus:
-            report.add(field_name, "UnverifiableClaim",
-                       f"claims {word!r}, which the source page does not substantiate")
+            report.add(
+                field_name,
+                "UnverifiableClaim",
+                f"claims {word!r}, which the source page does not substantiate",
+            )

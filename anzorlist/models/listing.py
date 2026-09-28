@@ -143,8 +143,12 @@ class SubmissionOutcome(BaseModel):
 
     @property
     def accepted(self) -> bool:
-        return self.status in (ListingStatus.ACCEPTED, ListingStatus.VALIDATED,
-                               ListingStatus.SUBMITTED, ListingStatus.LIVE)
+        return self.status in (
+            ListingStatus.ACCEPTED,
+            ListingStatus.VALIDATED,
+            ListingStatus.SUBMITTED,
+            ListingStatus.LIVE,
+        )
 
     def summary(self) -> str:
         errs = [i for i in self.issues if i.blocking]

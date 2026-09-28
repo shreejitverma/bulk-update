@@ -168,9 +168,15 @@ class Ledger:
                     payload_json, issues_json, status, built_at)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    listing.sku, listing.marketplace_id, listing.source_sku, listing.parent_sku,
-                    listing.product_type, int(listing.is_parent), listing.payload_hash,
-                    listing.content_hash, listing.source_url,
+                    listing.sku,
+                    listing.marketplace_id,
+                    listing.source_sku,
+                    listing.parent_sku,
+                    listing.product_type,
+                    int(listing.is_parent),
+                    listing.payload_hash,
+                    listing.content_hash,
+                    listing.source_url,
                     str(listing.offer.price) if listing.offer else None,
                     listing.offer.currency if listing.offer else None,
                     listing.offer.quantity if listing.offer else None,
@@ -216,8 +222,13 @@ class Ledger:
                     payload_hash, issues_json, submitted_at, run_id)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    outcome.sku, outcome.marketplace_id, outcome.mode, outcome.status.value,
-                    outcome.submission_id, outcome.request_id, outcome.http_status,
+                    outcome.sku,
+                    outcome.marketplace_id,
+                    outcome.mode,
+                    outcome.status.value,
+                    outcome.submission_id,
+                    outcome.request_id,
+                    outcome.http_status,
                     outcome.payload_hash,
                     json.dumps([i.model_dump(mode="json") for i in outcome.issues]),
                     (outcome.submitted_at or datetime.now(timezone.utc)).isoformat(),
@@ -237,8 +248,10 @@ class Ledger:
 
     def live_skus(self, marketplace_id: str | None = None) -> list[LedgerEntry]:
         """Every SKU believed to exist on Amazon. This is the rollback list."""
-        sql = ("SELECT sku, marketplace_id, payload_hash, status, built_at FROM listings "
-               "WHERE status IN ('submitted','accepted','live')")
+        sql = (
+            "SELECT sku, marketplace_id, payload_hash, status, built_at FROM listings "
+            "WHERE status IN ('submitted','accepted','live')"
+        )
         params: tuple[Any, ...] = ()
         if marketplace_id:
             sql += " AND marketplace_id = ?"

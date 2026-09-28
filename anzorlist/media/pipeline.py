@@ -111,7 +111,8 @@ class MediaPipeline:
         self.settings = settings
         self._owns_http = http is None
         self._http = http or httpx.Client(
-            timeout=60.0, follow_redirects=True,
+            timeout=60.0,
+            follow_redirects=True,
             headers={"User-Agent": settings.user_agent},
         )
         self._uploader = uploader
@@ -150,9 +151,13 @@ class MediaPipeline:
                         "produced, so this listing cannot be submitted with images"
                     )
 
-        log.info("media.processed", sku=product.sku, images=len(result.images),
-                 usable=sum(1 for i in result.images if i.ok),
-                 hosted=sum(1 for i in result.images if i.public_url))
+        log.info(
+            "media.processed",
+            sku=product.sku,
+            images=len(result.images),
+            usable=sum(1 for i in result.images if i.ok),
+            hosted=sum(1 for i in result.images if i.public_url),
+        )
         return result
 
     # -- fetch + validate --
@@ -222,8 +227,9 @@ class MediaPipeline:
                 f"noticeably better on the detail page"
             )
         if out.longest_side > MAX_LONGEST_SIDE:
-            out.errors.append(f"longest side is {out.longest_side}px; the maximum is "
-                              f"{MAX_LONGEST_SIDE}px")
+            out.errors.append(
+                f"longest side is {out.longest_side}px; the maximum is {MAX_LONGEST_SIDE}px"
+            )
 
     @staticmethod
     def _check_white_background(img: Image.Image, out: ProcessedImage) -> None:
@@ -263,8 +269,15 @@ class MediaPipeline:
         if self._uploader is not None:
             return self._uploader
         s = self.settings
-        if not all([s.r2_account_id, s.r2_access_key_id, s.r2_secret_access_key,
-                    s.r2_bucket, s.r2_public_base_url]):
+        if not all(
+            [
+                s.r2_account_id,
+                s.r2_access_key_id,
+                s.r2_secret_access_key,
+                s.r2_bucket,
+                s.r2_public_base_url,
+            ]
+        ):
             return None
         self._uploader = R2Uploader(s)
         return self._uploader
