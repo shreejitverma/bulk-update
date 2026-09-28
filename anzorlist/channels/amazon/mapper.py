@@ -301,7 +301,7 @@ class AmazonMapper:
     ) -> list[BuiltListing]:
         theme = AXIS_VARIATION_THEME[variations[0].axis]
         parent_sku = f"{product.sku}-PARENT"
-        child_skus = [self._child_sku(product.sku, v) for v in variations]
+        child_skus = [self.child_sku(product.sku, v) for v in variations]
 
         # -- parent: product data only. A parent is a browsable container, never buyable, so it
         # carries no purchasable_offer and no fulfillment_availability. Sending either makes
@@ -397,7 +397,7 @@ class AmazonMapper:
         return listings
 
     @staticmethod
-    def _child_sku(base_sku: str, variation: Variation) -> str:
+    def child_sku(base_sku: str, variation: Variation) -> str:
         """A stable, human-readable child SKU. Stability matters: Amazon keys the listing on it,
         so a SKU that changes between runs creates a duplicate listing instead of updating one."""
         token = variation.label

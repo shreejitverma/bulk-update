@@ -101,6 +101,17 @@ class Settings(BaseSettings):
     marketplaces: str = Field(default="US", alias="ANZOR_MARKETPLACES")
     use_sandbox: bool = Field(default=False, alias="SPAPI_SANDBOX")
 
+    # ---- eBay Sell APIs (Inventory + Account + Taxonomy) ----
+    ebay_env: str = Field(default="SANDBOX", alias="EBAY_ENV")  # SANDBOX or PRODUCTION
+    ebay_client_id: SecretStr | None = Field(default=None, alias="EBAY_CLIENT_ID")
+    ebay_client_secret: SecretStr | None = Field(default=None, alias="EBAY_CLIENT_SECRET")
+    ebay_refresh_token: SecretStr | None = Field(default=None, alias="EBAY_REFRESH_TOKEN")
+    ebay_marketplace_id: str = Field(default="EBAY_US", alias="EBAY_MARKETPLACE_ID")
+    ebay_fulfillment_policy_id: str | None = Field(default=None, alias="EBAY_FULFILLMENT_POLICY_ID")
+    ebay_payment_policy_id: str | None = Field(default=None, alias="EBAY_PAYMENT_POLICY_ID")
+    ebay_return_policy_id: str | None = Field(default=None, alias="EBAY_RETURN_POLICY_ID")
+    ebay_merchant_location_key: str | None = Field(default=None, alias="EBAY_MERCHANT_LOCATION_KEY")
+
     # ---- Safety ----
     allow_live: bool = Field(default=False, alias="ANZOR_ALLOW_LIVE")
     default_quantity: int = Field(default=1, alias="ANZOR_DEFAULT_QUANTITY")
@@ -156,6 +167,41 @@ class Settings(BaseSettings):
                 "SPAPI_LWA_CLIENT_SECRET", "Shown once when the SP-API app is created."
             )
         return self.lwa_client_id.get_secret_value(), self.lwa_client_secret.get_secret_value()
+
+    def ebay_credentials(self) -> tuple[str, str, str]:
+        """(client id, client secret, refresh token) for the eBay Sell APIs."""
+        for value, var, why in (
+            (self.ebay_client_id, "EBAY_CLIENT_ID", "The App ID from your eBay developer keyset."),
+            (self.ebay_client_secret, "EBAY_CLIENT_SECRET", "The Cert ID from the same keyset."),
+            (
+                self.ebay_refresh_token,
+                "EBAY_REFRESH_TOKEN",
+                "Issued when you grant your app access to the seller account (user token).",
+            ),
+        ):
+            if value is None:
+                raise MissingCredential(var, why)
+        assert self.ebay_client_id and self.ebay_client_secret and self.ebay_refresh_token
+        return (
+            self.ebay_client_id.get_secret_value(),
+            self.ebay_client_secret.get_secret_value(),
+            self.ebay_refresh_token.get_secret_value(),
+        )
+
+    def ebay_listing_policies(self) -> dict[str, str]:
+        """The three business policies and the inventory location every eBay offer needs."""
+        required = {
+            "EBAY_FULFILLMENT_POLICY_ID": self.ebay_fulfillment_policy_id,
+            "EBAY_PAYMENT_POLICY_ID": self.ebay_payment_policy_id,
+            "EBAY_RETURN_POLICY_ID": self.ebay_return_policy_id,
+            "EBAY_MERCHANT_LOCATION_KEY": self.ebay_merchant_location_key,
+        }
+        for var, value in required.items():
+            if not value:
+                raise MissingCredential(
+                    var, "Run `anzorlist ebay setup` to list your business policies and locations."
+                )
+        return {k: str(v) for k, v in required.items()}
 
     def has_spapi_credentials(self) -> bool:
         """True when a live call could at least be attempted. Used to pick offline mode."""
