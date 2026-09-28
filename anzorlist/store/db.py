@@ -260,6 +260,22 @@ class Ledger:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    _LIVE_SQL = """
+        SELECT s.sku, s.marketplace_id, s.payload_hash, s.status, s.submitted_at AS built_at
+        FROM submissions s
+        WHERE s.mode = 'SUBMIT' AND s.status IN ('submitted','accepted','live')
+          AND s.id = (
+            SELECT MAX(a.id) FROM submissions a
+            WHERE a.sku = s.sku AND a.marketplace_id = s.marketplace_id
+              AND a.mode = 'SUBMIT' AND a.status IN ('submitted','accepted','live')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM submissions d
+            WHERE d.sku = s.sku AND d.marketplace_id = s.marketplace_id
+              AND d.mode = 'DELETE' AND d.status = 'accepted' AND d.id > s.id
+          )
+    """
+
     def live_skus(self, marketplace_id: str | None = None) -> list[LedgerEntry]:
         """Every SKU believed to exist on Amazon. This is the rollback list.
 
@@ -268,27 +284,21 @@ class Ledger:
         to a live listing would otherwise drop a listing that is still live from this list.
         A SKU is live when it has an accepted SUBMIT and no later accepted deletion.
         """
-        sql = """
-            SELECT s.sku, s.marketplace_id, s.payload_hash, s.status, s.submitted_at AS built_at
-            FROM submissions s
-            WHERE s.mode = 'SUBMIT' AND s.status IN ('submitted','accepted','live')
-              AND s.id = (
-                SELECT MAX(a.id) FROM submissions a
-                WHERE a.sku = s.sku AND a.marketplace_id = s.marketplace_id
-                  AND a.mode = 'SUBMIT' AND a.status IN ('submitted','accepted','live')
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM submissions d
-                WHERE d.sku = s.sku AND d.marketplace_id = s.marketplace_id
-                  AND d.mode = 'DELETE' AND d.status = 'accepted' AND d.id > s.id
-              )
-        """
+        sql = self._LIVE_SQL
         params: tuple[Any, ...] = ()
         if marketplace_id:
             sql += " AND s.marketplace_id = ?"
             params = (marketplace_id,)
         rows = self._conn.execute(sql + " ORDER BY s.sku", params).fetchall()
         return [LedgerEntry(**dict(r)) for r in rows]
+
+    def is_live(self, sku: str, marketplace_id: str) -> bool:
+        """Whether this SKU exists on Amazon, by the same rule as :meth:`live_skus`, whatever
+        payload was last accepted for it."""
+        row = self._conn.execute(
+            self._LIVE_SQL + " AND s.sku = ? AND s.marketplace_id = ?", (sku, marketplace_id)
+        ).fetchone()
+        return row is not None
 
     def status_summary(self) -> dict[str, int]:
         rows = self._conn.execute(

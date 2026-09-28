@@ -144,11 +144,15 @@ def _listing(
     )
 
 
+def _none_live(sku: str, marketplace_id: str) -> bool:
+    return False
+
+
 class TestPlan:
     def test_child_selected_alone_still_sees_its_blocked_parent(self) -> None:
         parent = _listing("R1-PARENT", is_parent=True, blocked=True)
         child = _listing("R1-7", parent="R1-PARENT")
-        plan = plan_submission([child], lambda x: "new", family=[parent, child])
+        plan = plan_submission([child], lambda x: "new", is_live=_none_live, family=[parent, child])
         assert plan.send == [] and plan.orphaned == [child]
 
     def test_parent_is_withheld_when_every_child_is_blocked(self) -> None:
@@ -156,25 +160,29 @@ class TestPlan:
             _listing("R1-PARENT", is_parent=True),
             _listing("R1-7", parent="R1-PARENT", blocked=True),
         ]
-        plan = plan_submission(family, lambda x: "new")
+        plan = plan_submission(family, lambda x: "new", is_live=_none_live)
         assert plan.send == []
         assert [x.sku for x in plan.orphaned] == ["R1-PARENT"]
 
     def test_child_selected_alone_is_held_until_its_parent_is_on_amazon(self) -> None:
         parent = _listing("R1-PARENT", is_parent=True)
         child = _listing("R1-7", parent="R1-PARENT")
-        plan = plan_submission([child], lambda x: "new", family=[parent, child])
+        plan = plan_submission([child], lambda x: "new", is_live=_none_live, family=[parent, child])
         assert plan.send == [] and plan.orphaned == [child]
 
-        def parent_accepted(x: BuiltListing) -> SubmissionState:
-            return "accepted" if x.is_parent else "new"
+        def parent_live(sku: str, marketplace_id: str) -> bool:
+            return sku == "R1-PARENT" and marketplace_id == "ATVPDKIKX0DER"
 
-        plan = plan_submission([child], parent_accepted, family=[parent, child])
+        # The parent's current build differs from what Amazon has; it is still there to attach to.
+        def parent_changed(x: BuiltListing) -> SubmissionState:
+            return "changed" if x.is_parent else "new"
+
+        plan = plan_submission([child], parent_changed, is_live=parent_live, family=[parent, child])
         assert plan.send == [child] and plan.orphaned == []
 
     def test_child_goes_when_its_parent_is_sent_in_the_same_run(self) -> None:
         family = [_listing("R1-7", parent="R1-PARENT"), _listing("R1-PARENT", is_parent=True)]
-        plan = plan_submission(family, lambda x: "new")
+        plan = plan_submission(family, lambda x: "new", is_live=_none_live)
         assert [x.sku for x in plan.send] == ["R1-PARENT", "R1-7"]
 
     def test_children_of_a_blocked_parent_are_orphaned(self) -> None:
@@ -182,7 +190,7 @@ class TestPlan:
             _listing("R1-PARENT", is_parent=True, blocked=True),
             _listing("R1-7", parent="R1-PARENT"),
         ]
-        plan = plan_submission(family, lambda x: "new")
+        plan = plan_submission(family, lambda x: "new", is_live=_none_live)
         assert [x.sku for x in plan.orphaned] == ["R1-7"]
 
     @pytest.mark.parametrize(
@@ -196,7 +204,7 @@ class TestPlan:
         ],
     )
     def test_ledger_state_decides_the_bucket(self, state: str, bucket: str) -> None:
-        plan = plan_submission([_listing("S1")], lambda x: state)  # type: ignore[arg-type,return-value]
+        plan = plan_submission([_listing("S1")], lambda x: state, is_live=_none_live)  # type: ignore[arg-type,return-value]
         assert [x.sku for x in getattr(plan, bucket)] == ["S1"]
 
 

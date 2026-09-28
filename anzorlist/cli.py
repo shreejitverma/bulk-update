@@ -614,7 +614,9 @@ def amazon_submit(
             raise typer.Exit(1)
 
         with Ledger(s.state_db) as ledger:
-            plan = plan_submission(listings, ledger.submission_state, family=everything)
+            plan = plan_submission(
+                listings, ledger.submission_state, is_live=ledger.is_live, family=everything
+            )
             _print_local_blockers(plan.blocked, "Not sent: blocked by local checks")
             if plan.orphaned:
                 console.print(

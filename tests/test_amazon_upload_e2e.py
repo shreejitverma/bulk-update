@@ -382,6 +382,21 @@ def test_a_child_named_alone_is_held_until_its_parent_is_created(env: dict[str, 
     assert [c.sku for c in env["fake"].writes()] == ["R985-PARENT", "R985-7"]
 
 
+def test_a_child_named_alone_goes_when_its_live_parent_has_changed(env: dict[str, Any]) -> None:
+    build_ok()
+    assert run("amazon", "submit", "--confirm", "R985", input="y\n").exit_code == 0
+    before = len(env["fake"].writes())
+    for sku in ("R985-PARENT", "R985-7"):
+        path = env["data"] / "build" / "US" / "R985" / f"{sku}.json"
+        artifact = json.loads(path.read_text())
+        artifact["attributes"]["item_name"][0]["value"] = "Edited After Review"
+        path.write_text(json.dumps(artifact))
+
+    result = run("amazon", "submit", "--confirm", "R985-7", input="y\n")
+    assert result.exit_code == 0, result.output
+    assert [c.sku for c in env["fake"].writes()[before:]] == ["R985-7"]
+
+
 def test_feed_preview_sample_below_one_is_refused(env: dict[str, Any]) -> None:
     build_ok()
     result = run("amazon", "submit", "--confirm", "--feed", "--preview-sample", "0", input="y\n")

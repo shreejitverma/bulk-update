@@ -8,7 +8,7 @@ Planning (:func:`plan_submission`) sorts every selected listing into exactly one
 * ``send``       - will be written.
 * ``blocked``    - the local checks already found a blocking problem (no image, schema error).
                    Sending it would create a listing Amazon suppresses, or fail anyway.
-* ``orphaned``   - a variation child whose parent is blocked, or is neither accepted on Amazon
+* ``orphaned``   - a variation child whose parent is blocked, or is neither live on Amazon
                    nor sent in this run (Amazon cannot attach it), or a parent all of whose
                    children are blocked (it would be an empty page).
 * ``unchanged``  - this exact payload was already accepted.
@@ -106,6 +106,7 @@ def plan_submission(
     listings: list[BuiltListing],
     state: Callable[[BuiltListing], SubmissionState],
     *,
+    is_live: Callable[[str, str], bool],
     family: list[BuiltListing] | None = None,
 ) -> SubmissionPlan:
     """Sort ``listings`` into buckets.
@@ -113,6 +114,9 @@ def plan_submission(
     ``family`` is every built listing, not just the selected ones. Parent and child checks look
     there, so selecting one child by its own SKU still sees that its parent is blocked, and
     selecting only a parent still sees whether any of its children can go.
+
+    ``is_live(sku, marketplace_id)`` says whether a listing exists on Amazon. A child is sent only
+    when its parent does, or is sent ahead of it in this run.
     """
     plan = SubmissionPlan()
     everything = family if family is not None else listings
@@ -132,7 +136,6 @@ def plan_submission(
         and (kids := children.get((x.marketplace_id, x.sku)))
         and not any(k.submittable for k in kids)
     }
-    parents = {(x.marketplace_id, x.sku): x for x in everything if x.is_parent}
     sending: set[tuple[str, str]] = set()
     for listing in _ordered(listings):
         parent_key = _parent_key(listing)
@@ -143,9 +146,10 @@ def plan_submission(
             or (listing.marketplace_id, listing.sku) in childless_parents
         ):
             plan.orphaned.append(listing)
-        elif parent_key is not None and not (
-            parent_key in sending
-            or ((parent := parents.get(parent_key)) is not None and state(parent) == "accepted")
+        elif (
+            parent_key is not None
+            and parent_key not in sending
+            and not is_live(parent_key[1], parent_key[0])
         ):
             # Amazon cannot attach a child to a parent that does not exist there yet.
             plan.orphaned.append(listing)
