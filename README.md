@@ -86,6 +86,8 @@ flag nor a stale config value can cause a write alone.
 | `amazon submit --confirm` | SP-API (**write**) | Creates listings, one previewed call per listing |
 | `amazon submit --confirm --feed` | SP-API (**write**) | Bulk: parents per item, the rest in `JSON_LISTINGS_FEED` documents |
 | `amazon feed-status [FEED_ID]` | SP-API (read) | Reconcile a bulk feed's per-listing results into the ledger; no id lists unreconciled feeds |
+| `ebay setup` | eBay (read) | List business policy ids and inventory locations for `.env` |
+| `ebay submit --confirm [SKUS...]` | eBay (**write**) | Bulk-stage items and offers, then publish; idempotent on rerun |
 | `amazon status [SKU]` | none | Ledger state and submission history |
 | `amazon delete --confirm` | SP-API (**write**) | Remove an offer |
 
@@ -143,5 +145,6 @@ before a live account exists.
 Working end to end offline. Amazon calls are implemented and gated but unexercised against a
 live account — SP-API developer registration is pending. See `docs/RUNBOOK.md` for that path.
 
-eBay and Etsy adapters are stubs; the `Product` model and the copy/pricing layers are
-channel-neutral by design, so they slot in beside `channels/amazon/`.
+eBay is implemented (`channels/ebay/`): `build` writes `data/ebay/build/<SKU>.json` when
+`ANZOR_CHANNELS` includes `ebay`, and `ebay submit` stages and publishes through the Inventory
+API. Setup is in `docs/RUNBOOK.md`. Etsy is next.

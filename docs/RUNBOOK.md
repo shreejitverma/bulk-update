@@ -338,3 +338,43 @@ wrong.
   an explicit override. There is no repricer.
 - **No inventory sync.** Quantity comes from the spreadsheet. Wiring it to real stock is a
   separate integration with its own failure modes.
+
+---
+
+## eBay
+
+eBay needs no category approval for fine jewelry, but every listing must name three business policies and an inventory location.
+
+1. **Keys.** [developer.ebay.com](https://developer.ebay.com) → Application Keysets → create a **Production** keyset (and a Sandbox one to rehearse).
+   The App ID is `EBAY_CLIENT_ID`, the Cert ID is `EBAY_CLIENT_SECRET`.
+2. **User token.** In the same keyset, User Tokens → "Get a Token from eBay via Your Application", sign in as the seller, and grant the `sell.inventory` and `sell.account` scopes.
+   The refresh token is `EBAY_REFRESH_TOKEN`; it lasts about 18 months.
+3. **Business policies.** Seller Hub → Account → Business policies: create a shipping, a payment, and a return policy.
+   Create an inventory location (the address you ship from) if you have none.
+4. **Fill in the ids:**
+
+```bash
+anzorlist ebay setup      # prints every policy id and location key
+```
+
+```dotenv
+EBAY_ENV=PRODUCTION
+EBAY_FULFILLMENT_POLICY_ID=...
+EBAY_PAYMENT_POLICY_ID=...
+EBAY_RETURN_POLICY_ID=...
+EBAY_MERCHANT_LOCATION_KEY=...
+```
+
+5. **Publish:**
+
+```bash
+anzorlist build                        # writes data/ebay/build/<SKU>.json next to the Amazon payloads
+anzorlist ebay submit --confirm R985   # one SKU first; ANZOR_ALLOW_LIVE=true is required too
+```
+
+A ring with sizes becomes one eBay listing whose variations are the sizes, each at its own price.
+Titles are built from the extracted facts to fit eBay's 80 characters, never by cutting the Amazon title.
+Categories are Fine Rings 261994, Fine Earrings 261990, Fine Necklaces & Pendants 261993, Fine Bracelets 261988, and Fine Jewelry Sets 261992.
+eBay validates item specifics when it publishes; a rejection names the missing specific (for example `Metal`), and the workbook's attribute columns set it.
+Rerunning after a rejection updates the existing offers rather than creating duplicates.
+
