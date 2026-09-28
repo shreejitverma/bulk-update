@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Lint
+        run: uv run ruff check anzorlist tests scripts
+
+      - name: Format check
+        run: uv run black --check anzorlist tests scripts
+
+      - name: Tests
+        # The suite is fully offline: it runs against committed HTML fixtures with no network
+        # and no credentials, so CI needs no secrets and cannot touch a live Amazon account.
+        run: uv run pytest -q
+
+      - name: Verify the pipeline still builds a listing offline
+        # A green unit suite with a broken end-to-end path is the failure mode that matters
+        # here, so CI exercises the real fixture -> Amazon payload route on every push.
+        run: uv run python scripts/smoke_build.py

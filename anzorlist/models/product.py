@@ -60,6 +60,7 @@ class ProductFamily(str, Enum):
     BRACELET = "Bracelet"
     NECKLACE = "Necklace"
     SET = "Set"
+    LOOSE_STONE = "Loose Stone"
 
 
 # SKU prefix -> family, inferred then verified against the breadcrumb.
@@ -70,6 +71,7 @@ SKU_PREFIX_FAMILY: dict[str, ProductFamily] = {
     "B": ProductFamily.BRACELET,
     "N": ProductFamily.NECKLACE,
     "S": ProductFamily.SET,
+    "L": ProductFamily.LOOSE_STONE,  # loose diamonds — a stone, not a finished piece
 }
 
 

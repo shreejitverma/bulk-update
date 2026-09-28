@@ -120,7 +120,7 @@ class ListingRow(BaseModel):
             # produces a confusing 400 much later, so reject at the door with a readable message.
             raise ValueError(
                 f"{v!r} is not in the known jewelry product-type list. "
-                f"Leave blank to infer it, or run `anzorlist amazon product-types --refresh` "
+                f"Leave blank to infer it, or run `anzorlist amazon product-types` "
                 f"to pull the current list for your marketplace."
             )
         return v

@@ -45,7 +45,7 @@ log = structlog.get_logger(__name__)
 
 # SKU-prefix family -> Amazon product type. These are the *defaults* used when the spreadsheet
 # leaves the column blank. Amazon owns this vocabulary, revises it, and varies it per
-# marketplace, so `anzorlist amazon product-types --refresh` replaces the mapping with the
+# marketplace, so `anzorlist amazon product-types` replaces the mapping with the
 # authoritative set from the Product Type Definitions API once credentials exist.
 FAMILY_PRODUCT_TYPE: dict[ProductFamily, str] = {
     ProductFamily.RING: "RING",
@@ -54,6 +54,7 @@ FAMILY_PRODUCT_TYPE: dict[ProductFamily, str] = {
     ProductFamily.BRACELET: "BRACELET",
     ProductFamily.NECKLACE: "NECKLACE",
     ProductFamily.SET: "JEWELRY_SET",
+    ProductFamily.LOOSE_STONE: "LOOSE_STONE",
 }
 
 FAMILY_ITEM_TYPE_KEYWORD: dict[ProductFamily, str] = {
@@ -63,6 +64,7 @@ FAMILY_ITEM_TYPE_KEYWORD: dict[ProductFamily, str] = {
     ProductFamily.BRACELET: "bracelets",
     ProductFamily.NECKLACE: "necklaces",
     ProductFamily.SET: "jewelry-sets",
+    ProductFamily.LOOSE_STONE: "loose-gemstones",
 }
 
 # Variation theme by sizing axis. Amazon rejects an unknown theme outright.

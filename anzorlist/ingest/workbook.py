@@ -603,3 +603,132 @@ def _coerce(col: Column, raw: object) -> object:
     if isinstance(raw, float) and raw.is_integer():
         text = str(int(raw))
     return text
+
+
+# --------------------------------------------------------------------------------------
+# Bulk population from a catalog scan
+# --------------------------------------------------------------------------------------
+
+
+def append_skus(
+    path: Path | str,
+    skus: list[str],
+    *,
+    category_of: dict[str, str] | None = None,
+    include: bool = False,
+    variation_source: str = "site",
+) -> tuple[int, int]:
+    """Append discovered SKUs to the Products sheet, skipping ones already present.
+
+    Returns ``(added, skipped)``.
+
+    ``include`` defaults to **False**. A catalog scan can add thousands of rows, and a run that
+    silently queued the entire catalog for upload the moment it was discovered would be exactly
+    the wrong default. The operator opts rows in deliberately — by filtering in Excel and
+    setting ``Include? = Y`` on what they actually want listed.
+
+    Existing rows are never modified: this only ever adds. Re-running a scan after the catalogue
+    grows adds just the new products and leaves every edit intact.
+    """
+    path = Path(path)
+    if not path.exists():
+        write_template(path, with_examples=False)
+
+    wb = load_workbook(path)
+    if PRODUCTS_SHEET not in wb.sheetnames:
+        wb.close()
+        raise ValueError(f"{path} has no {PRODUCTS_SHEET!r} sheet — run `anzorlist workbook init`")
+    ws = wb[PRODUCTS_SHEET]
+
+    headers = [c.value for c in ws[1]]
+    col_of: dict[str, int] = {
+        str(h): i + 1 for i, h in enumerate(headers) if h in COLUMNS_BY_HEADER
+    }
+    sku_col = col_of["SKU"]
+
+    existing: set[str] = set()
+    last_row = 1
+    for r in range(2, ws.max_row + 1):
+        value = ws.cell(row=r, column=sku_col).value
+        if value is not None and str(value).strip():
+            existing.add(str(value).strip().upper())
+            last_row = r
+
+    added = skipped = 0
+    row = last_row + 1
+    for sku in skus:
+        key = sku.strip().upper()
+        if not key or key in existing:
+            skipped += 1
+            continue
+        existing.add(key)
+        ws.cell(row=row, column=sku_col, value=key)
+        for header, value in (
+            ("Include?", "Y" if include else "N"),
+            ("Variations", variation_source),
+            (
+                "Notes (not uploaded)",
+                (category_of or {}).get(key, "") and f"catalog: {(category_of or {})[key]}",
+            ),
+        ):
+            if header in col_of and value:
+                ws.cell(row=row, column=col_of[header], value=value)
+        # Re-apply the group tint so appended rows look like the rest of the sheet.
+        for header, idx in col_of.items():
+            cell = ws.cell(row=row, column=idx)
+            cell.fill = _GROUP_FILLS.get(COLUMNS_BY_HEADER[header].group, _GROUP_FILLS["Notes"])
+            cell.border = _BORDER
+        row += 1
+        added += 1
+
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{max(row - 1, 1)}"
+    wb.save(path)
+    log.info("workbook.skus_appended", path=str(path), added=added, skipped=skipped)
+    return added, skipped
+
+
+def write_results(path: Path | str, outcomes: list[object]) -> int:
+    """Fill in the Upload Results sheet from a validate or submit run.
+
+    The operator lives in this spreadsheet; making them read terminal scrollback or a SQLite
+    ledger to find out which SKU failed and why is the wrong ergonomics. The sheet is rewritten
+    each run rather than appended to — it answers "what happened last time", and the durable
+    history lives in the ledger.
+    """
+    path = Path(path)
+    wb = load_workbook(path)
+    if RESULTS_SHEET in wb.sheetnames:
+        wb.remove(wb[RESULTS_SHEET])
+    ws = wb.create_sheet(RESULTS_SHEET)
+    _build_results(ws)
+
+    row = 2
+    for outcome in outcomes:
+        issues = getattr(outcome, "issues", []) or []
+        blocking = [i for i in issues if getattr(i, "blocking", False)]
+        shown = blocking or issues
+        first = shown[0] if shown else None
+        submitted = getattr(outcome, "submitted_at", None)
+        values = [
+            getattr(outcome, "sku", ""),
+            getattr(outcome, "marketplace_code", ""),
+            getattr(outcome, "sku", ""),
+            getattr(getattr(outcome, "status", None), "value", ""),
+            getattr(outcome, "submission_id", "") or "",
+            getattr(first, "code", "") if first else "",
+            getattr(getattr(first, "severity", None), "value", "") if first else "",
+            getattr(first, "message", "") if first else "",
+            getattr(outcome, "payload_hash", "")[:16],
+            submitted.isoformat(timespec="seconds") if submitted else "",
+        ]
+        for i, value in enumerate(values, start=1):
+            ws.cell(row=row, column=i, value=value)
+        if blocking:
+            ws.cell(row=row, column=4).fill = PatternFill("solid", fgColor="FFC7CE")
+        elif getattr(outcome, "accepted", False):
+            ws.cell(row=row, column=4).fill = PatternFill("solid", fgColor="C6EFCE")
+        row += 1
+
+    wb.save(path)
+    log.info("workbook.results_written", path=str(path), rows=row - 2)
+    return row - 2

@@ -28,6 +28,7 @@ from rich.table import Table
 
 from anzorlist.config import MissingCredential, Settings
 from anzorlist.config import settings as get_settings
+from anzorlist.extract.client import SiteClient
 from anzorlist.ingest import read_workbook, write_template
 from anzorlist.ingest.row import ListingRow
 from anzorlist.marketplaces import group_by_region, resolve, resolve_all
@@ -48,7 +49,11 @@ workbook_app = typer.Typer(
     help="Create and validate the Product Listing workbook.", no_args_is_help=True
 )
 amazon_app = typer.Typer(help="Amazon SP-API operations.", no_args_is_help=True)
+catalog_app = typer.Typer(
+    help="Discover the store's catalog and audit its photography.", no_args_is_help=True
+)
 app.add_typer(workbook_app, name="workbook")
+app.add_typer(catalog_app, name="catalog")
 app.add_typer(amazon_app, name="amazon")
 
 console = Console()
@@ -242,6 +247,173 @@ def workbook_validate(
         markets = sorted({m for r in included for m in (r.marketplaces or [s.marketplaces])})
         console.print(f"Marketplaces referenced: [cyan]{', '.join(markets)}[/]")
         console.print("\nNext: [cyan]anzorlist build[/]")
+
+
+# =====================================================================  catalog
+
+
+@catalog_app.command("scan")
+def catalog_scan(
+    categories: Annotated[
+        str | None, typer.Option("--categories", "-c", help="Comma-separated category IDs.")
+    ] = None,
+    append: Annotated[
+        bool, typer.Option("--append/--no-append", help="Write discovered SKUs into the workbook.")
+    ] = True,
+    include: Annotated[
+        bool, typer.Option("--include", help="Mark appended rows Include=Y (default: N).")
+    ] = False,
+    rate: Annotated[float, typer.Option(help="Requests per second against the site.")] = 2.0,
+) -> None:
+    """Discover every SKU in the store so they don't have to be typed.
+
+    Walks the category listings and appends anything new to the Products sheet. Appended rows
+    default to Include = N: discovery should never be the same act as queueing a few thousand
+    products for upload. Filter in Excel and set Include = Y on what you actually want.
+    """
+    from anzorlist.extract.catalog import CatalogScanner
+    from anzorlist.ingest.workbook import append_skus
+
+    s = get_settings()
+    ids = [int(x) for x in categories.split(",")] if categories else None
+    site = SiteClient(
+        base_url=s.base_url, user_agent=s.user_agent, req_per_sec=rate, data_dir=s.raw_dir
+    )
+    try:
+        scanner = CatalogScanner(site)
+        with console.status("[cyan]Walking category listings…[/]"):
+            scan = scanner.scan(ids)
+    finally:
+        site.close()
+
+    table = Table(title="Catalog scan", show_lines=False)
+    table.add_column("Category", style="cyan")
+    table.add_column("SKUs", justify="right")
+    table.add_column("Pages", justify="right")
+    table.add_column("Complete", justify="center")
+    for cat in scan.categories:
+        pages = f"{cat.pages_fetched}" + (f"/{cat.reported_pages}" if cat.reported_pages else "")
+        table.add_row(
+            f"{cat.name} ({cat.category_id})",
+            str(len(cat.skus)),
+            pages,
+            "[green]yes[/]" if cat.complete and not cat.truncated else "[yellow]no[/]",
+        )
+    console.print(table)
+
+    total = len(scan.skus)
+    console.print(f"\n[bold]{total}[/] unique SKU(s) discovered · by prefix: {scan.by_prefix()}")
+    if scan.incomplete_categories:
+        console.print(
+            "[yellow]Some categories did not complete — re-run to pick up the rest:[/] "
+            + ", ".join(c.name for c in scan.incomplete_categories)
+        )
+
+    if append:
+        added, skipped = append_skus(
+            s.workbook_path, scan.skus, category_of=scan.category_of(), include=include
+        )
+        console.print(
+            f"\n[green]{added}[/] new row(s) added to {s.workbook_path} "
+            f"([dim]{skipped} already present[/])"
+        )
+        if added and not include:
+            console.print(
+                "Rows are staged as [yellow]Include = N[/]. Open the Products tab, "
+                "set [bold]Y[/] on what you want listed, then run "
+                "[cyan]anzorlist build[/]."
+            )
+
+
+@catalog_app.command("audit-images")
+def catalog_audit_images(
+    skus: Annotated[
+        list[str] | None, typer.Argument(help="SKUs; default is the whole workbook.")
+    ] = None,
+    scan: Annotated[
+        bool,
+        typer.Option("--scan", help="Enumerate the catalog first instead of using the workbook."),
+    ] = False,
+    limit: Annotated[int, typer.Option(help="Stop after N SKUs (0 = no limit).")] = 0,
+    csv_out: Annotated[Path | None, typer.Option("--csv", help="Write a per-SKU worklist.")] = None,
+) -> None:
+    """Measure how much of the catalog has Amazon-ready photography.
+
+    Amazon needs the main image at 1000px or more on the longest side, and suppresses listings
+    without it. This reports exactly how many SKUs clear that bar, so a reshoot can be scoped
+    as a number rather than estimated.
+    """
+    from anzorlist.media.audit import ImageAuditor
+
+    s = get_settings()
+    if scan:
+        from anzorlist.extract.catalog import CatalogScanner
+
+        site = SiteClient(
+            base_url=s.base_url, user_agent=s.user_agent, req_per_sec=2.0, data_dir=s.raw_dir
+        )
+        try:
+            with console.status("[cyan]Enumerating catalog…[/]"):
+                targets = CatalogScanner(site).scan().skus
+        finally:
+            site.close()
+    elif skus:
+        targets = [x.upper() for x in skus]
+    else:
+        targets = [r.sku for r in read_workbook(s.workbook_path).rows]
+    if limit:
+        targets = targets[:limit]
+    if not targets:
+        err_console.print("[red]No SKUs to audit.[/] Run `anzorlist catalog scan` first.")
+        raise typer.Exit(1)
+
+    with (
+        ImageAuditor(s.base_url, s.user_agent) as auditor,
+        console.status(f"[cyan]Probing images for {len(targets)} SKU(s)…[/]"),
+    ):
+        report = auditor.audit(targets)
+
+    summary = report.summary()
+    table = Table(title="Image readiness", show_lines=False)
+    table.add_column("Measure", style="cyan")
+    table.add_column("Count", justify="right")
+    table.add_column("", style="dim")
+    listable, audited = summary["skus_listable"], summary["skus_audited"]
+    table.add_row("SKUs audited", str(audited), "")
+    table.add_row(
+        "Listable on Amazon today",
+        f"[green]{listable}[/]",
+        f"{listable / audited * 100:.0f}% — main image ≥1000px",
+    )
+    table.add_row(
+        "Blocked by photography",
+        f"[red]{summary['skus_blocked']}[/]",
+        "need new images before they can be listed",
+    )
+    table.add_row("Images found", str(summary["images_found"]), "")
+    table.add_row("  ≥1600px (ideal)", str(summary["images_ready"]), "")
+    table.add_row("  1000–1599px (usable)", str(summary["images_at_minimum"]), "")
+    table.add_row("  <1000px (unusable)", f"[red]{summary['images_too_small']}[/]", "")
+    console.print(table)
+
+    hist = report.size_histogram()
+    if hist:
+        console.print("\n[bold]Where the images actually sit:[/]")
+        widest = max(hist.values())
+        for bucket, count in hist.items():
+            bar = "█" * max(1, round(count / widest * 40))
+            colour = "red" if bucket in ("<500px", "500-799px", "800-999px") else "green"
+            console.print(f"  {bucket:<12} [{colour}]{bar}[/] {count}")
+
+    out = csv_out or (s.data_dir / "image_audit.csv")
+    report.write_csv(out)
+    console.print(f"\nPer-SKU worklist: [cyan]{out}[/]")
+    if summary["skus_blocked"]:
+        console.print(
+            f"\n[yellow]{summary['skus_blocked']} SKU(s) cannot be listed until their main "
+            f"image is re-exported or re-shot at 1000px or larger.[/] Filter the CSV on "
+            f"[bold]needs_new_photography = yes[/] for the worklist."
+        )
 
 
 # =====================================================================  build
@@ -544,6 +716,7 @@ def amazon_validate(
 
     _print_outcomes(outcomes, "Amazon validation (nothing was created)")
     _print_local_blockers(blocked, "Blocked by local checks (submit will skip these)")
+    _write_results(s, outcomes)
     if blocked or any(not o.accepted for o in outcomes):
         raise typer.Exit(1)
     console.print("\n[green]All payloads pass Amazon's validation.[/]")
@@ -690,6 +863,7 @@ def amazon_submit(
     finally:
         pool.close()
 
+    _write_results(s, outcomes)
     if any(o.accepted for o in outcomes):
         console.print(
             "\n[bold]Accepted listings are created but not yet buyable.[/] Amazon processes new "
@@ -883,6 +1057,77 @@ def _print_outcomes(outcomes: list[SubmissionOutcome], title: str) -> None:
             detail = "\n".join(f"[yellow]{i.code}[/]: {i.message}" for i in warnings[:2])
         table.add_row(o.sku, o.marketplace_code, mark, detail or "—")
     console.print(table)
+
+
+def _write_results(s: Settings, outcomes: list) -> None:  # type: ignore[type-arg]
+    """Mirror the run into the workbook's Upload Results tab.
+
+    The operator works in the spreadsheet. Making them read terminal scrollback or query a
+    SQLite ledger to find out which SKU failed is the wrong place to put the answer.
+    """
+    from anzorlist.ingest.workbook import write_results
+
+    try:
+        rows = write_results(s.workbook_path, outcomes)
+        console.print(
+            f"[dim]Wrote {rows} row(s) to the 'Upload Results' tab of {s.workbook_path}[/]"
+        )
+    except Exception as exc:  # noqa: BLE001 — never fail a run over a spreadsheet write
+        console.print(f"[yellow]Could not update the workbook results tab: {exc}[/]")
+
+
+@amazon_app.command("product-types")
+def amazon_product_types(
+    marketplace: Annotated[str, typer.Option("--marketplace", "-m")] = "US",
+    keywords: Annotated[str | None, typer.Option(help="Filter, e.g. 'ring,jewelry'.")] = None,
+) -> None:
+    """List the product types Amazon actually accepts in a marketplace.
+
+    The defaults in the workbook dropdown are best-guess. Amazon owns this vocabulary, revises
+    it, and varies it per marketplace — this is the authoritative answer for your account.
+    """
+    from anzorlist.channels.amazon.definitions import DefinitionsClient
+
+    pool, s = _pool_and_settings()
+    market = resolve(marketplace)
+    try:
+        client = DefinitionsClient(pool.for_region(market.region), s.schema_cache_dir)
+        types = client.search_product_types(
+            market, keywords=[k.strip() for k in keywords.split(",")] if keywords else None
+        )
+    finally:
+        pool.close()
+
+    if not types:
+        console.print(f"[yellow]No product types returned for {market.code}.[/]")
+        raise typer.Exit(1)
+
+    from anzorlist.ingest.schema import JEWELRY_PRODUCT_TYPES
+
+    table = Table(title=f"Product types available in {market.code}")
+    table.add_column("Product type", style="cyan")
+    table.add_column("Display name", overflow="fold")
+    table.add_column("In our dropdown?", justify="center")
+    names = set()
+    for entry in types:
+        name = str(entry.get("name", ""))
+        names.add(name)
+        table.add_row(
+            name,
+            str(entry.get("displayName", "")),
+            "[green]yes[/]" if name in JEWELRY_PRODUCT_TYPES else "[dim]no[/]",
+        )
+    console.print(table)
+
+    missing = [t for t in JEWELRY_PRODUCT_TYPES if t not in names]
+    if missing:
+        console.print(
+            f"\n[yellow]In our dropdown but NOT available in {market.code}:[/] {', '.join(missing)}"
+        )
+        console.print(
+            "Set the correct type per row in the workbook's "
+            "'Amazon Product Type' column, or leave it blank to infer."
+        )
 
 
 if __name__ == "__main__":

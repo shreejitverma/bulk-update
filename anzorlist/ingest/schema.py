@@ -48,7 +48,7 @@ YES_NO = ("Y", "N")
 VARIATION_SOURCES = ("site", "none")
 
 # Amazon jewelry product types. These are the defaults used when the operator leaves the column
-# blank; `anzorlist amazon product-types --refresh` replaces this list with the definitive set
+# blank; `anzorlist amazon product-types` replaces this list with the definitive set
 # from the Product Type Definitions API for your marketplace, because the valid set is
 # marketplace-specific and Amazon revises it.
 JEWELRY_PRODUCT_TYPES = (

@@ -190,9 +190,14 @@ class ProductParser:
         crumb_text = " ".join(w.lower() for path in breadcrumbs for w in path)
         verified = False
         if inferred is not None:
-            # Verify against breadcrumb taxonomy words (e.g. "Rings", "Earrings").
-            token = inferred.value.lower().rstrip("s")
-            verified = token in crumb_text
+            # Verify against breadcrumb taxonomy words (e.g. "Rings", "Earrings"). Loose stones
+            # are filed under "Diamonds"/"Loose", never under a word matching the family name,
+            # so they get their own vocabulary rather than a permanent unverified warning.
+            if inferred is ProductFamily.LOOSE_STONE:
+                verified = any(w in crumb_text for w in ("loose", "diamond", "stone"))
+            else:
+                token = inferred.value.lower().rstrip("s")
+                verified = token in crumb_text
         if inferred is None:
             self._warn("FamilyMismatch", "family", f"unknown SKU prefix {prefix!r}")
             return ProductFamily.SET, False
