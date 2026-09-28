@@ -22,8 +22,9 @@ anzorlist workbook validate
 anzorlist build --no-media    # no image hosting configured yet
 ```
 
-That produces complete Amazon payloads in `data/build/US/<SKU>/*.json`, one folder per website SKU. Read one. Everything after
-this runbook is about getting permission to send them.
+That produces complete Amazon payloads in `data/build/US/<SKU>/*.json`, one folder per website SKU.
+Read one.
+Everything after this runbook is about getting permission to send them.
 
 ---
 
@@ -284,10 +285,11 @@ anzorlist amazon submit --confirm --feed
 3. The rest go in `JSON_LISTINGS_FEED` documents, one marketplace per feed, split at 5,000 messages or 8 MB.
 4. The tool waits for Amazon's processing report and records each listing's result in the ledger.
 
-Each feed's message-to-SKU map is saved in `data/feeds/<feed-id>.json` before the feed is created.
+Each feed's message-to-SKU map is saved in `data/feeds/<feed-id>.json` as soon as Amazon returns the feed id.
 If you pass `--no-wait`, or processing takes longer than 30 minutes, reconcile later:
 
 ```bash
+anzorlist amazon feed-status                       # list feeds with no recorded result
 anzorlist amazon feed-status 50012345678           # one check
 anzorlist amazon feed-status 50012345678 --wait    # poll until done
 ```

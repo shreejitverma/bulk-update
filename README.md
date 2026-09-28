@@ -85,9 +85,12 @@ flag nor a stale config value can cause a write alone.
 | `amazon validate [SKUS...]` | SP-API (dry run) | Amazon validates the payload and creates nothing |
 | `amazon submit --confirm` | SP-API (**write**) | Creates listings, one previewed call per listing |
 | `amazon submit --confirm --feed` | SP-API (**write**) | Bulk: parents per item, the rest in `JSON_LISTINGS_FEED` documents |
-| `amazon feed-status FEED_ID` | SP-API (read) | Reconcile a bulk feed's per-listing results into the ledger |
+| `amazon feed-status [FEED_ID]` | SP-API (read) | Reconcile a bulk feed's per-listing results into the ledger; no id lists unreconciled feeds |
 | `amazon status [SKU]` | none | Ledger state and submission history |
 | `amazon delete --confirm` | SP-API (**write**) | Remove an offer |
+
+Exit codes: `0` done, `1` something failed or was blocked, `2` refused by a safety gate or bad setup,
+`3` accepted by Amazon but the result is not known yet (reconcile with `amazon feed-status`).
 
 ## The workbook
 
@@ -113,7 +116,8 @@ anzorlist/
   extract/             site client (throttle, cache, encoding) + provenance-tracking parser
   generate/            sanitize → generate → validate; escalation on validator failure
   media/               download, Amazon-requirement checks, R2 hosting
-  channels/amazon/     auth, rate-limited transport, definitions, preflight, listings, feeds, mapper
+  channels/amazon/     auth, rate-limited transport, definitions, preflight, listings, feeds, mapper,
+                       build artifacts on disk, submission planning
   store/               SQLite submission ledger
 docs/RUNBOOK.md        SP-API registration, GTIN exemption, first live listing
 ```
