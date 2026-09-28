@@ -36,7 +36,8 @@ cp .env.example .env
 
 anzorlist doctor              # what's configured, what's missing, and how to fix it
 anzorlist workbook init       # generates Product Listing.xlsx
-# → fill in the SKU column. Hover any header for what it does.
+anzorlist catalog scan        # discovers every SKU in the store, appends them as Include = N
+# → set Include = Y on what you want listed. Hover any header for what it does.
 anzorlist workbook validate   # every error at once, with cell references
 anzorlist build               # payloads land in data/build/<marketplace>/<SKU>/
 ```
@@ -79,8 +80,11 @@ flag nor a stale config value can cause a write alone.
 | `doctor` | none | Configuration and credential check, with the fix for each gap |
 | `workbook init` | none | Generate the workbook; existing rows are preserved |
 | `workbook validate` | none | Validate every row, report every error with cell references |
+| `catalog scan` | Anzor site | Walk the category listings and append every new SKU as `Include = N` |
+| `catalog audit-images` | Anzor site | How much of the catalog clears Amazon's 1000px main-image bar |
 | `build [SKUS...]` | Anzor site, Anthropic, R2 | Extract → copy → price → map → schema-check |
 | `amazon preflight` | SP-API (read) | Marketplace registration and category gating |
+| `amazon product-types` | SP-API (read) | The product types Amazon actually accepts for this account |
 | `amazon sync-schemas` | SP-API (read) | Cache Amazon's JSON schemas for offline validation |
 | `amazon validate [SKUS...]` | SP-API (dry run) | Amazon validates the payload and creates nothing |
 | `amazon submit --confirm` | SP-API (**write**) | Creates listings, one previewed call per listing |
@@ -115,15 +119,17 @@ anzorlist/
   pricing.py           the gross-up
   pipeline.py          orchestration; stages 1–6 need no Amazon credentials
   cli.py               Typer CLI, grouped by safety boundary
-  ingest/              workbook schema, template writer, validated reader
-  extract/             site client (throttle, cache, encoding) + provenance-tracking parser
+  ingest/              workbook schema, template writer, validated reader, results writer
+  extract/             site client (throttle, cache, encoding), provenance-tracking parser,
+                       category walker that discovers the catalog's SKUs
   generate/            sanitize → generate → validate; escalation on validator failure
-  media/               download, Amazon-requirement checks, R2 hosting
+  media/               download, Amazon-requirement checks, R2 hosting, catalog-wide image audit
   channels/amazon/     auth, rate-limited transport, definitions, preflight, listings, feeds, mapper,
                        build artifacts on disk, submission planning
   channels/ebay/       OAuth client, mapper (80-char titles, size groups), bulk stage and publish
   channels/etsy/       OAuth client (rotating refresh token), mapper, create/update, photo sync
   store/               SQLite submission ledger
+scripts/smoke_build.py fixture → Amazon payload, offline; run in CI on every push
 docs/RUNBOOK.md        SP-API registration, GTIN exemption, first live listing; eBay and Etsy setup
 ```
 

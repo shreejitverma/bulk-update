@@ -17,10 +17,17 @@ cp .env.example .env          # edit ANZOR_BRAND_NAME and ANZOR_MANUFACTURER
 
 anzorlist doctor              # shows exactly what is and isn't configured
 anzorlist workbook init       # generates Product Listing.xlsx
-# ... fill in the SKU column ...
+anzorlist catalog scan        # walks the store and appends every SKU it finds
+# ... set Include = Y on the rows you want ...
 anzorlist workbook validate
 anzorlist build --no-media    # no image hosting configured yet
 ```
+
+`catalog scan` exists so the SKU column never has to be typed. It appends what it finds as
+`Include = N`: discovering the catalog and queueing a few thousand products for upload are not
+the same act, so they are not the same keystroke. Filter the Products sheet in Excel and set
+`Include = Y` on what you actually want. Re-running it after the store grows adds only the new
+products and leaves every edit intact.
 
 That produces complete Amazon payloads in `data/build/US/<SKU>/*.json`, one folder per website SKU.
 Read one.
@@ -209,7 +216,16 @@ that fail Amazon's requirements (under 1000px, non-white background, wrong forma
 
 Most images on anzorjewelrycorp.com are 400x400 px.
 Amazon disables zoom below 1000 px, so the build blocks those listings with a `NoMainImage` issue that says exactly this.
-Supply the original photos instead:
+
+How much of the catalog that actually affects is a measurement, not an estimate:
+
+```bash
+anzorlist catalog audit-images --scan     # or pass SKUs, or default to the workbook
+```
+
+It probes each SKU's image slots and reports how many clear the 1000px bar, how many sit below
+it, and where the rest fall. It writes a per-SKU worklist to `data/image_audit.csv`; filter it on
+`needs_new_photography = yes` to get the reshoot list. Supply the original photos instead:
 
 ```
 images/
