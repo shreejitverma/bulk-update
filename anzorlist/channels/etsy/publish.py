@@ -2,13 +2,16 @@
 
 Etsy has no SKU-keyed upsert, so the numeric ``listing_id`` for each website SKU is recorded in
 ``data/etsy/listings.json`` the moment Etsy returns it, together with the ``listing_image_id`` of
-each photo uploaded, keyed by the photo's digest. A rerun after any failure therefore updates the
-same listing instead of creating a second one, and never uploads the same photo twice.
+each photo uploaded, keyed by the photo's digest in the listing's rank order. A rerun after any
+failure therefore updates the same listing instead of creating a second one, and never uploads the
+same photo twice.
 
-Order of operations: create (as a draft) or update the listing, delete the listing's photos that
-are no longer in the build, upload new ones, set the inventory (sizes with their own prices), then
-activate. Activation is the step that makes it visible and incurs Etsy's listing fee, and it needs
-both safety gates.
+Photos are kept in the build's order: those that already match the build from rank 1 stay, every
+photo after the first difference is deleted, and the rest of the build is uploaded behind them.
+
+Order of operations: create (as a draft) or update the listing, sync the photos, set the
+inventory (sizes with their own prices), then activate. Activation is the step that makes it
+visible and incurs Etsy's listing fee, and it needs both safety gates.
 """
 
 from __future__ import annotations
@@ -45,7 +48,8 @@ class EtsyLiveWriteBlocked(RuntimeError):
 
 
 class EtsyState:
-    """listing_id and {image digest: listing_image_id} per website SKU, saved after every change."""
+    """listing_id and {image digest: listing_image_id} (in rank order) per website SKU, saved after
+    every change."""
 
     def __init__(self, data_dir: Path) -> None:
         self.path = data_dir / "etsy" / "listings.json"
@@ -90,21 +94,14 @@ class EtsyPublisher:
                 f"Refusing to publish {listing.source_sku} on Etsy: needs --confirm and "
                 f"ANZOR_ALLOW_LIVE=true"
             )
-        cfg = self._settings.etsy_settings()
         shop = f"/v3/application/shops/{self._client.shop_id}"
         state = self._state.get(listing.source_sku)
         try:
             fields = {
                 **listing.listing_fields(),
                 "taxonomy_id": self.taxonomy_id(listing.family),
-                "shipping_profile_id": int(cfg["ETSY_SHIPPING_PROFILE_ID"]),
-                "return_policy_id": int(cfg["ETSY_RETURN_POLICY_ID"]),
-                "when_made": self._settings.etsy_when_made,
-                "is_supply": False,
-                "type": "physical",
+                **shop_fields(self._settings),
             }
-            if self._settings.etsy_readiness_state_id:
-                fields["readiness_state_id"] = int(self._settings.etsy_readiness_state_id)
             if state["listing_id"] is None:
                 created = self._client.request(
                     "POST",
@@ -126,7 +123,11 @@ class EtsyPublisher:
             photos = [Path(path).read_bytes() for path in listing.image_files]
             wanted = [hashlib.sha256(data).hexdigest() for data in photos]
             images: dict[str, int] = state["images"]
-            for digest in [d for d in images if d not in wanted]:
+            current = list(images)
+            keep = 0
+            while keep < min(len(current), len(wanted)) and current[keep] == wanted[keep]:
+                keep += 1
+            for digest in current[keep:]:
                 try:
                     self._client.request(
                         "DELETE", f"{shop}/listings/{listing_id}/images/{images[digest]}"
@@ -139,7 +140,7 @@ class EtsyPublisher:
             for rank, (path, data, digest) in enumerate(
                 zip(listing.image_files, photos, wanted, strict=True), start=1
             ):
-                if digest in images:
+                if rank <= keep:
                     continue
                 name = Path(path).name
                 uploaded = self._client.request(
@@ -168,6 +169,21 @@ class EtsyPublisher:
             )
         log.warning("etsy.published", sku=listing.source_sku, listing_id=listing_id)
         return _outcome(listing, ListingStatus.SUBMITTED, [], str(listing_id))
+
+
+def shop_fields(settings: Settings) -> dict[str, Any]:
+    """Listing fields that come from the shop's settings at submit time, not from the build."""
+    cfg = settings.etsy_settings()
+    fields: dict[str, Any] = {
+        "shipping_profile_id": int(cfg["ETSY_SHIPPING_PROFILE_ID"]),
+        "return_policy_id": int(cfg["ETSY_RETURN_POLICY_ID"]),
+        "when_made": settings.etsy_when_made,
+        "is_supply": False,
+        "type": "physical",
+    }
+    if settings.etsy_readiness_state_id:
+        fields["readiness_state_id"] = int(settings.etsy_readiness_state_id)
+    return fields
 
 
 def _outcome(

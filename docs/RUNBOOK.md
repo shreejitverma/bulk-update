@@ -406,7 +406,9 @@ Each activation incurs Etsy's listing fee.
 Taxonomy ids come from Etsy's own seller taxonomy (Jewelry > Rings, Earrings, Necklaces, Bracelets) at run time.
 Ring sizes become inventory products on one listing, each with its own price and SKU.
 Each SKU's `listing_id` and uploaded photos (their `listing_image_id`, keyed by content digest) are recorded in `data/etsy/listings.json`, so a rerun after any failure updates the same listing and never uploads a photo twice.
-When a photo in `images/<SKU>/` is replaced or removed, the next submit deletes the old photo from the listing before uploading the new one.
+When the photos in `images/<SKU>/` change, the next submit makes the listing's photos match them in order: photos that still match from the first one stay, and every photo after the first difference is deleted and uploaded again in the new order.
+Renaming files to change the main photo therefore takes effect on Etsy too.
+Changing `ETSY_WHEN_MADE`, `ETSY_SHIPPING_PROFILE_ID`, `ETSY_RETURN_POLICY_ID` or `ETSY_READINESS_STATE_ID` makes every listing due for resubmission on the next `etsy submit`, without a rebuild; `ETSY_WHO_MADE` needs a rebuild, since it also decides the tags.
 A title may use each of `%`, `:`, `&` and `+` only once; `build` holds a listing whose Title Override breaks that rule.
 Do not delete that file while listings exist; without it the next run would create duplicates.
 

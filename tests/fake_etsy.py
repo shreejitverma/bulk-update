@@ -14,8 +14,8 @@ import httpx
 class FakeEtsy:
     fail_inventory_once: bool = False
     listings: dict[int, dict[str, Any]] = field(default_factory=dict)
-    # listing_id -> {listing_image_id: (file name, content type)}: the photos live on each listing
-    images: dict[int, dict[int, tuple[str, str]]] = field(default_factory=dict)
+    # listing_id -> [(listing_image_id, file name, content type)] in rank order
+    images: dict[int, list[tuple[int, str, str]]] = field(default_factory=dict)
     uploads: int = 0
     inventory: dict[int, dict[str, Any]] = field(default_factory=dict)
     refresh_tokens_seen: list[str] = field(default_factory=list)
@@ -90,16 +90,19 @@ class FakeEtsy:
             part = re.search(
                 rb'name="image"; filename="([^"]+)"\r\nContent-Type: (\S+)', request.content
             )
-            assert part, "no image part"
+            rank = re.search(rb'name="rank"\r\n\r\n(\d+)', request.content)
+            assert part and rank, "no image or rank part"
             self.uploads += 1
             image_id = 5000 + self.uploads
-            photo = (part[1].decode(), part[2].decode())
-            self.images.setdefault(listing_id, {})[image_id] = photo
+            photo = (image_id, part[1].decode(), part[2].decode())
+            self.images.setdefault(listing_id, []).insert(int(rank[1]) - 1, photo)
             return httpx.Response(201, json={"listing_image_id": image_id})
         if request.method == "DELETE" and "images" in parts:
-            live = self.images.get(int(parts[-3]), {})
-            if live.pop(int(parts[-1]), None) is None:
+            live = self.images.get(int(parts[-3]), [])
+            gone = [p for p in live if p[0] == int(parts[-1])]
+            if not gone:
                 return httpx.Response(404, json={"error": "no such image"})
+            live.remove(gone[0])
             return httpx.Response(204)
         if request.method == "PUT" and path.endswith("/inventory"):
             if self.fail_inventory_once:

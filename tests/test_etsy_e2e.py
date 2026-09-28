@@ -91,6 +91,16 @@ def test_publishing_is_gated(
     assert etsy.listings == {}
 
 
+def _live_names(etsy: FakeEtsy, listing_id: int) -> list[str]:
+    return [name for _, name, _ in etsy.images[listing_id]]
+
+
+def _built_names(workspace: dict[str, Any], sku: str) -> list[str]:
+    path = workspace["data"] / "etsy" / "build" / f"{sku}.json"
+    listing = json.loads(path.read_text())
+    return [path.rsplit("/", 1)[1] for path in listing["image_files"]]
+
+
 def test_a_replaced_photo_replaces_the_listing_image(
     env: dict[str, Any],  # noqa: F811
     etsy: FakeEtsy,
@@ -100,17 +110,51 @@ def test_a_replaced_photo_replaces_the_listing_image(
     build_ok()
     assert run("etsy", "submit", "--confirm", "E1154", input="y\n").exit_code == 0
     [listing_id] = etsy.listings
-    assert len(etsy.images[listing_id]) == 2
+    assert _live_names(etsy, listing_id) == _built_names(env, "E1154")
 
-    (photos / "01.jpg").write_bytes(_white_jpeg(1400))
+    (photos / "02.jpg").write_bytes(_white_jpeg(1400))
     build_ok()
-    new = json.loads((env["data"] / "etsy" / "build" / "E1154.json").read_text())["image_files"]
     result = run("etsy", "submit", "--confirm", "E1154", input="y\n")
     assert result.exit_code == 0, result.output
-    live = etsy.images[listing_id].values()
-    assert sorted(name for name, _ in live) == sorted(path.rsplit("/", 1)[1] for path in new)
-    assert {ctype for _, ctype in live} == {"image/jpeg"}
-    assert etsy.uploads == 3  # only the new main photo; the unchanged one stays
+    assert _live_names(etsy, listing_id) == _built_names(env, "E1154")
+    assert {ctype for _, _, ctype in etsy.images[listing_id]} == {"image/jpeg"}
+    assert etsy.uploads == 3  # only the new photo; the unchanged main photo stays
+
+
+def test_renaming_photos_changes_the_main_photo(
+    env: dict[str, Any],  # noqa: F811
+    etsy: FakeEtsy,
+) -> None:
+    photos = env["root"] / "images" / "E1154"
+    (photos / "02.jpg").write_bytes(_white_jpeg(1300))
+    build_ok()
+    assert run("etsy", "submit", "--confirm", "E1154", input="y\n").exit_code == 0
+    [listing_id] = etsy.listings
+    before = _live_names(etsy, listing_id)
+
+    (photos / "01.jpg").rename(photos / "tmp.jpg")
+    (photos / "02.jpg").rename(photos / "01.jpg")
+    (photos / "tmp.jpg").rename(photos / "02.jpg")
+    build_ok()
+    result = run("etsy", "submit", "--confirm", "E1154", input="y\n")
+    assert result.exit_code == 0, result.output
+    assert _live_names(etsy, listing_id) == _built_names(env, "E1154") == before[::-1]
+
+
+def test_a_changed_shop_setting_is_resubmitted(
+    env: dict[str, Any],  # noqa: F811
+    etsy: FakeEtsy,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    build_ok()
+    assert run("etsy", "submit", "--confirm", "E1154", input="y\n").exit_code == 0
+    monkeypatch.setenv("ETSY_WHEN_MADE", "2020_2025")
+    monkeypatch.setenv("ETSY_SHIPPING_PROFILE_ID", "78")
+    get_settings.cache_clear()
+    result = run("etsy", "submit", "--confirm", "E1154", input="y\n")
+    assert result.exit_code == 0, result.output
+    [listing] = etsy.listings.values()
+    assert listing["when_made"] == "2020_2025" and listing["shipping_profile_id"] == 78
 
 
 def test_etsy_listings_are_not_counted_as_amazon_listings(

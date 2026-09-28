@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -30,7 +31,9 @@ def write(data_dir: Path, listing: EtsyListing) -> Path:
     return path
 
 
-def load_all(data_dir: Path) -> list[EtsyListing]:
+def load_all(data_dir: Path, shop: dict[str, Any]) -> list[EtsyListing]:
+    """Every built listing, hashed together with the shop fields it will be submitted with, so a
+    changed shop setting makes the listing due again."""
     listings: list[EtsyListing] = []
     folder = build_dir(data_dir)
     if not folder.exists():
@@ -46,6 +49,6 @@ def load_all(data_dir: Path) -> list[EtsyListing]:
             listing = EtsyListing.model_validate(data)
         except ValidationError as exc:
             raise ArtifactError(f"{path}: invalid Etsy artifact: {exc}") from exc
-        listing.payload_hash = listing.compute_payload_hash()
+        listing.payload_hash = listing.compute_payload_hash(shop)
         listings.append(listing)
     return listings

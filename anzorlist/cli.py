@@ -1072,7 +1072,7 @@ def etsy_submit(
     """Create or update Etsy listings and activate them. Writes to the Etsy shop."""
     from anzorlist.channels.amazon.artifacts import ArtifactError
     from anzorlist.channels.etsy import artifacts as etsy_artifacts
-    from anzorlist.channels.etsy.publish import EtsyPublisher
+    from anzorlist.channels.etsy.publish import EtsyPublisher, shop_fields
 
     s = get_settings()
     if not (confirm and s.allow_live):
@@ -1084,12 +1084,12 @@ def etsy_submit(
         )
         raise typer.Exit(2)
     try:
-        s.etsy_settings()
+        shop = shop_fields(s)
     except MissingCredential as exc:
         err_console.print(f"[red]{exc}[/]")
         raise typer.Exit(2) from exc
     try:
-        built = etsy_artifacts.load_all(s.data_dir)
+        built = etsy_artifacts.load_all(s.data_dir, shop)
     except ArtifactError as exc:
         err_console.print(f"[red]{exc}[/]")
         raise typer.Exit(1) from exc

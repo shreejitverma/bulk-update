@@ -130,9 +130,11 @@ class EtsyListing(BaseModel):
             "sku_on_property": [CUSTOM_PROPERTY_ID],
         }
 
-    def compute_payload_hash(self) -> str:
+    def compute_payload_hash(self, shop: dict[str, Any] | None = None) -> str:
+        """Everything sent for this listing; ``shop`` adds the submit-time shop fields."""
         payload = {
             "fields": self.listing_fields(),
+            "shop": shop or {},
             "family": self.family,
             "inventory": self.inventory_body(),
             "images": [_file_digest(f) for f in self.image_files],
