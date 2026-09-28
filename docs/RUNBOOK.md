@@ -22,7 +22,7 @@ anzorlist workbook validate
 anzorlist build --no-media    # no image hosting configured yet
 ```
 
-That produces complete Amazon payloads in `data/build/US/*.json`. Read one. Everything after
+That produces complete Amazon payloads in `data/build/US/<SKU>/*.json`, one folder per website SKU. Read one. Everything after
 this runbook is about getting permission to send them.
 
 ---
@@ -204,6 +204,23 @@ R2_PUBLIC_BASE_URL=https://images.anzorjewelrycorp.com
 Then `anzorlist build` will download, validate, and host every product image, and report any
 that fail Amazon's requirements (under 1000px, non-white background, wrong format).
 
+### Product photos: the website's are too small
+
+Most images on anzorjewelrycorp.com are 400x400 px.
+Amazon disables zoom below 1000 px, so the build blocks those listings with a `NoMainImage` issue that says exactly this.
+Supply the original photos instead:
+
+```
+images/
+  R985/
+    01.jpg      <- main image: the piece alone, on pure white
+    02.jpg      <- alternates, in name order (up to 8)
+```
+
+When a SKU has a folder, its photos replace the website's entirely for that SKU.
+They go through the same checks (size, format, white-background border) and are hosted the same way.
+The folder location is `ANZOR_IMAGES_DIR` (default `images`).
+
 ---
 
 ## Step 6 — First live listing
@@ -218,9 +235,9 @@ anzorlist workbook validate
 anzorlist build R985
 
 # 3. Read the payload. This is the artifact under review.
-cat "data/build/US/R985-PARENT.json"
+cat "data/build/US/R985/R985-PARENT.json"
 
-# 4. Amazon's own validator. Creates nothing.
+# 4. Amazon's own validator. Creates nothing. "R985" selects the whole size family.
 anzorlist amazon validate R985
 
 # 5. Only when step 4 is clean:
@@ -234,6 +251,47 @@ fine-jewelry listings asynchronously, so a successful submission is not yet a li
 Once one SKU is correct end to end, set `Include = Y` on the rest and run `anzorlist build`
 followed by `anzorlist amazon validate`. Do not skip validate on the batch — a category-level
 problem shows up identically on every SKU, and finding it in a dry run costs nothing.
+
+### What `submit` sends, and what it holds back
+
+With no SKUs named, `validate` and `submit` act on the workbook rows with Include = Y, in the marketplaces each row names.
+A row set to N is never sent, even though its old build is still on disk.
+Before anything is written, `submit` sorts every listing into one bucket and prints the counts:
+
+| Bucket | Meaning |
+|---|---|
+| sent | Will be written, parents before children |
+| blocked | The build found a blocking problem (no image, schema error); fix it and rebuild |
+| family blocked | A child whose parent is blocked, or a parent whose children all are |
+| unchanged | This exact payload was already accepted; nothing to do |
+| in flight | This exact payload is in a feed that has not been reconciled yet |
+
+A child whose parent Amazon rejects during the run is not sent (`ParentNotCreated`).
+A payload edited by hand after `build` is detected by its hash and resubmitted.
+
+### Bulk upload: `--feed`
+
+Per-item submission makes two calls per listing (preview, then write), at about 2.5 listings a second.
+For hundreds of listings or more, use the Feeds API:
+
+```bash
+anzorlist amazon submit --confirm --feed
+```
+
+1. Variation parents go first through the per-item path, because children cannot attach until their parent exists.
+2. Up to 5 listings per marketplace (one per product first) are previewed; if any fails, that marketplace's feed is not sent.
+3. The rest go in `JSON_LISTINGS_FEED` documents, one marketplace per feed, split at 5,000 messages or 8 MB.
+4. The tool waits for Amazon's processing report and records each listing's result in the ledger.
+
+Each feed's message-to-SKU map is saved in `data/feeds/<feed-id>.json` before the feed is created.
+If you pass `--no-wait`, or processing takes longer than 30 minutes, reconcile later:
+
+```bash
+anzorlist amazon feed-status 50012345678           # one check
+anzorlist amazon feed-status 50012345678 --wait    # poll until done
+```
+
+Until a feed is reconciled, its listings count as in flight and are not resubmitted.
 
 ---
 

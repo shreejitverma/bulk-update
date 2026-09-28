@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default=Path("data"), alias="ANZOR_DATA_DIR")
     workbook_path: Path = Field(default=Path("Product Listing.xlsx"), alias="ANZOR_WORKBOOK")
     state_db: Path = Field(default=Path("data/anzorlist.sqlite"), alias="ANZOR_STATE_DB")
+    # Operator-supplied product photos, one folder per SKU (images/R985/01.jpg, 02.jpg, ...).
+    # When a SKU's folder exists, its photos replace the website's, which are often too small.
+    images_dir: Path = Field(default=Path("images"), alias="ANZOR_IMAGES_DIR")
 
     # ---- Site extraction ----
     base_url: str = Field(default="https://www.anzorjewelrycorp.com", alias="ANZOR_BASE_URL")

@@ -20,9 +20,7 @@ theme, not eight standalone listings: one detail page, one set of reviews, one B
 
 from __future__ import annotations
 
-import hashlib
-import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -40,7 +38,7 @@ from anzorlist.models.listing import (
     ListingStatus,
     OfferTerms,
 )
-from anzorlist.models.product import Product, ProductFamily, Variation
+from anzorlist.models.product import Gemstone, Product, ProductFamily, Variation
 from anzorlist.pricing import PriceQuote
 
 log = structlog.get_logger(__name__)
@@ -89,6 +87,7 @@ METAL_TYPE_NORMALISED: dict[tuple[str | None, str | None], str] = {
 }
 
 MAX_ALTERNATE_IMAGES = 8  # Amazon accepts other_product_image_locator_1 .. _8
+MAX_TITLE_LENGTH = 200  # Amazon's fine-jewelry item_name ceiling
 
 
 # ---------------------------------------------------------------------------- attribute shapes
@@ -147,11 +146,9 @@ class _Resolver:
     row: ListingRow
     product: Product
     settings: Settings
-    provenance: dict[str, str] = None  # type: ignore[assignment]
-
-    def __post_init__(self) -> None:
-        if self.provenance is None:
-            self.provenance = {}
+    provenance: dict[str, str] = field(default_factory=dict)
+    # Non-blocking notes raised while resolving, surfaced as WARNING issues on the listing.
+    warnings: list[ListingIssue] = field(default_factory=list)
 
     def pick(self, key: str, override: Any, extracted: Any, default: Any = None) -> Any:
         """Return the winning value, or ``None`` to omit the attribute entirely."""
@@ -364,6 +361,12 @@ class AmazonMapper:
                 }
             ]
             child_attrs.update(self._size_attributes(variation, product, marketplace))
+            # A child's title names its size, so search results and order emails for one size
+            # are distinguishable from the others.
+            parent_title = child_attrs["item_name"][0]["value"]
+            child_title = f"{parent_title}, Size {size_label(variation)}"
+            if len(child_title) <= MAX_TITLE_LENGTH:
+                child_attrs["item_name"] = localized(child_title, marketplace)
 
             # Each size carries its own price delta from the site, so the child price is the
             # parent's gross-up plus that delta — never the parent price repeated.
@@ -429,14 +432,16 @@ class AmazonMapper:
     def _size_attributes(
         self, variation: Variation, product: Product, marketplace: Marketplace
     ) -> dict[str, Any]:
-        """The attribute that actually distinguishes one child from another."""
-        out: dict[str, Any] = {"size": localized(variation.label, marketplace)}
+        """The attribute that actually distinguishes one child from another.
+
+        ``size`` is what the detail page's size selector shows, so it carries the normalized
+        value ("7", "18 in") rather than the site's option text ("Size 7 (Women's Avg)").
+        """
+        out: dict[str, Any] = {"size": localized(size_label(variation), marketplace)}
         if variation.axis == "ring_size" and variation.value is not None:
             out["ring_size"] = localized(format(variation.value.normalize(), "f"), marketplace)
         elif variation.value is not None and variation.unit:
-            out["item_length_description"] = localized(
-                f"{format(variation.value.normalize(), 'f')} {variation.unit}", marketplace
-            )
+            out["item_length_description"] = localized(size_label(variation), marketplace)
         return out
 
     # -- shared attribute construction --
@@ -501,24 +506,49 @@ class AmazonMapper:
         if metal_type:
             attributes["metal_type"] = attr(metal_type, marketplace)
             attributes["material"] = localized(metal_type.replace("_", " ").title(), marketplace)
+        elif a.metal_type:
+            described = " ".join(x for x in (a.metal_color, a.metal_type) if x)
+            resolver.warnings.append(
+                ListingIssue(
+                    code="MetalTypeUnresolved",
+                    message=f"the site describes the metal as {described!r}, which does not map "
+                    f"to one Amazon metal_type without guessing a colour; metal_type was omitted. "
+                    f"Amazon usually requires it - set 'Metal Type' in the workbook.",
+                    severity=IssueSeverity.WARNING,
+                    attribute_names=["metal_type"],
+                )
+            )
 
         metal_stamp = resolver.pick("metal_stamp", row.metal_stamp, a.metal_purity)
         if metal_stamp:
             attributes["metal_stamp"] = attr(metal_stamp, marketplace)
 
-        gem = resolver.pick(
-            "gem_type",
-            row.gem_type,
-            a.gemstones[0].type.lower() if a.gemstones else None,
-        )
-        if gem and gem != "none":
-            attributes["gem_type"] = attr(gem, marketplace)
+        # ---- stones: every distinct stone is named; the total is a real total or nothing ----
+        stones = _distinct_stone_types(a.gemstones)
+        if row.gem_type:
+            resolver.provenance["gem_type"] = "spreadsheet"
+            stones = [] if row.gem_type == "none" else [row.gem_type]
+        elif stones:
+            resolver.provenance["gem_type"] = "website"
+        if stones:
+            attributes["gem_type"] = [
+                {"value": stone, "marketplace_id": marketplace.marketplace_id} for stone in stones
+            ]
 
-        carat = resolver.pick(
-            "total_gem_weight",
-            row.total_gem_weight_ct,
-            a.gemstones[0].carat_weight if a.gemstones else None,
-        )
+        extracted_total: Decimal | None = None
+        if row.gem_type != "none":
+            extracted_total, gap = _total_carat_weight(a.gemstones)
+            if gap:
+                resolver.warnings.append(
+                    ListingIssue(
+                        code="GemWeightOmitted",
+                        message=f"total_gem_weight omitted: {gap}. Set 'Total Gem Weight (ct)' "
+                        f"in the workbook if the total is known.",
+                        severity=IssueSeverity.WARNING,
+                        attribute_names=["total_gem_weight"],
+                    )
+                )
+        carat = resolver.pick("total_gem_weight", row.total_gem_weight_ct, extracted_total)
         if carat:
             attributes["total_gem_weight"] = measure(carat, "carats", marketplace)
 
@@ -613,7 +643,7 @@ class AmazonMapper:
         variation_theme: str | None = None,
         child_skus: list[str] | None = None,
     ) -> BuiltListing:
-        issues: list[ListingIssue] = []
+        issues: list[ListingIssue] = list(resolver.warnings)
 
         # Carry extraction warnings forward. A listing built on a page we could not fully parse
         # should say so on its face, not only in a log line from an earlier stage.
@@ -652,10 +682,6 @@ class AmazonMapper:
                 )
             )
 
-        payload_hash = hashlib.sha256(
-            json.dumps(attributes, sort_keys=True, default=str).encode()
-        ).hexdigest()
-
         listing = BuiltListing(
             sku=sku,
             parent_sku=parent_sku,
@@ -689,9 +715,9 @@ class AmazonMapper:
             status=ListingStatus.BUILT,
             source_url=product.source_url,
             content_hash=product.content_hash,
-            payload_hash=payload_hash,
             built_at=datetime.now(timezone.utc),
         )
+        listing.payload_hash = listing.compute_payload_hash()
         log.debug(
             "mapper.built",
             sku=sku,
@@ -721,6 +747,40 @@ def _normalise_metal(metal_type: str | None, metal_color: str | None) -> str | N
     return METAL_TYPE_NORMALISED.get(
         (metal_type, colour), METAL_TYPE_NORMALISED.get((metal_type, None))
     )
+
+
+def size_label(variation: Variation) -> str:
+    """The customer-facing size: "7" for a ring, "18 in" for a chain, else the site's text."""
+    if variation.value is None:
+        return variation.label
+    number = format(variation.value.normalize(), "f")
+    return f"{number} {variation.unit}" if variation.unit else number
+
+
+def _distinct_stone_types(gemstones: list[Gemstone]) -> list[str]:
+    """Every stone the piece carries, in page order, once each."""
+    seen: list[str] = []
+    for gem in gemstones:
+        stone = gem.type.strip().lower()
+        if stone and stone not in seen:
+            seen.append(stone)
+    return seen
+
+
+def _total_carat_weight(gemstones: list[Gemstone]) -> tuple[Decimal | None, str]:
+    """The piece's total carat weight, or ``None`` with the reason it cannot be stated.
+
+    A "total" built from only some of the stones understates the piece and misdescribes it, so
+    the total is emitted only when every stone has a parsed weight.
+    """
+    if not gemstones:
+        return None, ""
+    missing = [g.type for g in gemstones if g.carat_weight is None]
+    if missing:
+        if len(missing) == len(gemstones):
+            return None, ""  # nothing was stated at all; not worth a warning
+        return None, f"no weight was stated for {', '.join(missing)}"
+    return sum((g.carat_weight for g in gemstones if g.carat_weight is not None), Decimal(0)), ""
 
 
 def _gtin_type(digits: str) -> str:

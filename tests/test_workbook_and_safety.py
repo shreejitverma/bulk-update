@@ -308,3 +308,23 @@ class TestLiveWriteGates:
         transport.request.return_value.status = 200
         outcome = client.put(_listing(), us, mode="VALIDATION_PREVIEW")
         assert outcome.issues[0].blocking is True
+
+
+def test_env_example_only_names_variables_the_config_reads() -> None:
+    """A misnamed variable in .env.example is silently ignored, and the operator then gets a
+    'missing credential' error for a credential they did set."""
+    from pathlib import Path
+
+    from anzorlist.config import Settings
+
+    known = {f.alias for f in Settings.model_fields.values() if f.alias}
+    example = Path(__file__).parents[1] / ".env.example"
+    named = {
+        line.lstrip("# ").split("=", 1)[0].strip()
+        for line in example.read_text().splitlines()
+        if "=" in line and line.lstrip("# ")[:1].isupper()
+    }
+    # eBay and Etsy settings are read by their channel modules, not by Settings.
+    channel_prefixes = ("EBAY_", "ETSY_")
+    unknown = sorted(v for v in named if v not in known and not v.startswith(channel_prefixes))
+    assert unknown == []

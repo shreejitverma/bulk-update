@@ -138,5 +138,9 @@ class TokenProvider:
         if self._owns_client:
             self._client.close()
 
+    def close_client(self) -> None:
+        """Close the HTTP client even when it was injected by the owner of this provider."""
+        self._client.close()
+
     def __repr__(self) -> str:  # never let a token reach a traceback or log line
         return f"<TokenProvider regions={sorted(r.value for r in self._cache)}>"

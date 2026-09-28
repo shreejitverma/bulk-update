@@ -157,6 +157,10 @@ class SpApiClient:
         self._buckets: dict[str, _Bucket] = {}
         self._buckets_lock = threading.Lock()
 
+    def adopt_http(self) -> None:
+        """Take ownership of an injected HTTP client so :meth:`close` releases it."""
+        self._owns_http = True
+
     @property
     def seller_id(self) -> str:
         return self.settings.seller_id(self.region)
@@ -184,7 +188,9 @@ class SpApiClient:
         url = f"{self.endpoint}{path}"
         bucket = self._bucket(operation)
         refreshed_once = False
-        last_exc: Exception | None = None
+        # The failure of the most recent attempt; raised if the retry budget runs out, so the
+        # operator sees what actually kept failing rather than a generic message.
+        last_failure: Exception | None = None
 
         for attempt in range(1, self.MAX_ATTEMPTS + 1):
             waited = bucket.acquire()
@@ -196,7 +202,10 @@ class SpApiClient:
                     method, url, params=params, json=json_body, headers=headers
                 )
             except httpx.TransportError as exc:
-                last_exc = exc
+                last_failure = SpApiError(
+                    0, operation, [{"code": "TransportError", "message": str(exc)}], None
+                )
+                last_failure.__cause__ = exc
                 backoff = min(30.0, 2.0**attempt)
                 log.warning(
                     "spapi.transport_error",
@@ -237,6 +246,10 @@ class SpApiClient:
             errors = _decode_errors(resp)
 
             if resp.status_code == 429:
+                last_failure = SpApiThrottled(
+                    f"{operation} still throttled after {self.MAX_ATTEMPTS} attempts. "
+                    f"Reduce concurrency or retry later; SP-API quota is per selling partner."
+                )
                 delay = _retry_after(resp, attempt)
                 log.warning(
                     "spapi.throttled",
@@ -257,6 +270,9 @@ class SpApiClient:
                 continue
 
             if resp.status_code >= 500:
+                last_failure = SpApiError(
+                    resp.status_code, operation, errors, request_id, resp.text
+                )
                 delay = min(30.0, 2.0**attempt)
                 log.warning(
                     "spapi.server_error",
@@ -272,14 +288,8 @@ class SpApiClient:
             # 4xx other than 429/403: deterministic. Retrying wastes quota and delays the fix.
             raise SpApiError(resp.status_code, operation, errors, request_id, resp.text)
 
-        if last_exc is not None:
-            raise SpApiError(
-                0, operation, [{"code": "TransportError", "message": str(last_exc)}], None
-            ) from last_exc
-        raise SpApiThrottled(
-            f"{operation} still throttled after {self.MAX_ATTEMPTS} attempts. "
-            f"Reduce concurrency or retry later; SP-API quota is per selling partner."
-        )
+        assert last_failure is not None  # every non-returning iteration sets it
+        raise last_failure
 
     @staticmethod
     def _retune(bucket: _Bucket, resp: httpx.Response, operation: str) -> None:
@@ -339,17 +349,38 @@ class ClientPool:
     its own connection pool and mint its own token.
     """
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, transport: httpx.BaseTransport | None = None) -> None:
         self._settings = settings
-        self._tokens = TokenProvider(settings)
+        # ``transport`` replaces the network for every client the pool creates - SP-API, LWA,
+        # and the presigned-URL client. It exists so the full flow can run against a fake.
+        self._transport = transport
+        self._tokens = TokenProvider(settings, client=self._http(timeout=30.0))
+        self._raw = self._http(timeout=120.0)
         self._clients: dict[Region, SpApiClient] = {}
         self._lock = threading.Lock()
+
+    def _http(self, **kwargs: Any) -> httpx.Client:
+        return httpx.Client(transport=self._transport, **kwargs)
+
+    @property
+    def raw_http(self) -> httpx.Client:
+        """A plain client for presigned URLs, which must not carry SP-API auth."""
+        return self._raw
 
     def for_region(self, region: Region) -> SpApiClient:
         with self._lock:
             client = self._clients.get(region)
             if client is None:
-                client = SpApiClient(self._settings, region, tokens=self._tokens)
+                http = self._http(
+                    timeout=httpx.Timeout(60.0, connect=15.0),
+                    follow_redirects=False,
+                    headers={
+                        "user-agent": "anzorlist/0.1 (Language=Python)",
+                        "accept": "application/json",
+                    },
+                )
+                client = SpApiClient(self._settings, region, tokens=self._tokens, http=http)
+                client.adopt_http()
                 self._clients[region] = client
             return client
 
@@ -357,6 +388,8 @@ class ClientPool:
         for client in self._clients.values():
             client.close()
         self._tokens.close()
+        self._tokens.close_client()
+        self._raw.close()
 
     def __enter__(self) -> ClientPool:
         return self

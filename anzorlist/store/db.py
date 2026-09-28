@@ -20,13 +20,14 @@ of a SKU is the full sequence of its rows.
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 
@@ -35,6 +36,8 @@ from anzorlist.models.listing import BuiltListing, SubmissionOutcome
 log = structlog.get_logger(__name__)
 
 SCHEMA_VERSION = 1
+
+SubmissionState = Literal["new", "changed", "accepted", "in_flight", "failed"]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -187,8 +190,8 @@ class Ledger:
                 ),
             )
 
-    def needs_submission(self, listing: BuiltListing) -> bool:
-        """True when this exact payload has not already been accepted for this marketplace.
+    def submission_state(self, listing: BuiltListing) -> SubmissionState:
+        """Where this exact payload stands with Amazon, from the last live write for its SKU.
 
         The comparison is on the payload hash, not on a timestamp: a rebuild that produces
         byte-identical attributes is genuinely a no-op, and re-sending it would consume quota
@@ -201,10 +204,18 @@ class Ledger:
             (listing.sku, listing.marketplace_id),
         ).fetchone()
         if row is None:
-            return True
+            return "new"
         if row["payload_hash"] != listing.payload_hash:
-            return True
-        return row["status"] not in ("submitted", "accepted", "live")
+            return "changed"
+        if row["status"] in ("submitted", "accepted", "live"):
+            return "accepted"
+        if row["status"] == "pending":
+            return "in_flight"
+        return "failed"
+
+    def needs_submission(self, listing: BuiltListing) -> bool:
+        """True when this exact payload is neither accepted nor already in flight."""
+        return self.submission_state(listing) in ("new", "changed", "failed")
 
     def get_listing(self, sku: str, marketplace_id: str) -> dict[str, Any] | None:
         row = self._conn.execute(
@@ -283,3 +294,9 @@ class Ledger:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def new_run_id(command: str) -> str:
+    """A unique, sortable run id. Reusing one would overwrite an earlier run's audit record."""
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return f"{command}-{stamp}-{secrets.token_hex(3)}"

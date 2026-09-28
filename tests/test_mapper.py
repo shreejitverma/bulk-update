@@ -303,3 +303,84 @@ class TestFallbackCopy:
             search_terms=copy.search_terms,
         )
         assert report.ok, [str(i) for i in report.errors]
+
+
+class TestStonesAndSizes:
+    """Every stone is named, a total is a real total, and each child names its size."""
+
+    def test_every_stone_is_named_and_the_total_sums_them(
+        self, settings, earrings, us, copy_obj, quote
+    ):
+        [listing] = build(
+            AmazonMapper(settings),
+            earrings,
+            ListingRow(sku=earrings.sku, variation_source="none"),
+            us,
+            copy_obj,
+            quote,
+        )
+        # E1154 carries 1.30 ct of diamond and 0.65 ct of emerald; the old mapper said 1.30.
+        assert [g["value"] for g in listing.attributes["gem_type"]] == ["diamond", "emerald"]
+        assert listing.attributes["total_gem_weight"][0]["value"] == pytest.approx(1.95)
+
+    def test_a_partial_total_is_omitted_with_a_warning(
+        self, settings, earrings, us, copy_obj, quote
+    ):
+        partial = earrings.model_copy(deep=True)
+        partial.attributes.gemstones[1].carat_weight = None
+        [listing] = build(
+            AmazonMapper(settings),
+            partial,
+            ListingRow(sku=partial.sku, variation_source="none"),
+            us,
+            copy_obj,
+            quote,
+        )
+        assert "total_gem_weight" not in listing.attributes
+        [warning] = [i for i in listing.issues if i.code == "GemWeightOmitted"]
+        assert not warning.blocking and "Emerald" in warning.message
+
+    def test_gem_type_none_drops_the_extracted_weight(
+        self, settings, earrings, us, copy_obj, quote
+    ):
+        [listing] = build(
+            AmazonMapper(settings),
+            earrings,
+            ListingRow(sku=earrings.sku, variation_source="none", gem_type="none"),
+            us,
+            copy_obj,
+            quote,
+        )
+        assert "gem_type" not in listing.attributes
+        assert "total_gem_weight" not in listing.attributes
+
+    def test_children_carry_a_clean_size_and_name_it_in_the_title(
+        self, settings, ring, us, copy_obj, quote
+    ):
+        listings = build(
+            AmazonMapper(settings), ring, ListingRow(sku=ring.sku), us, copy_obj, quote
+        )
+        parent, first = listings[0], listings[1]
+        assert parent.attributes["item_name"][0]["value"] == copy_obj.title
+        # The site's option text is "Size 7 (Women's Avg)"; the size selector shows "7".
+        assert first.attributes["size"][0]["value"] == "7"
+        assert first.attributes["item_name"][0]["value"] == f"{copy_obj.title}, Size 7"
+
+    def test_an_unmappable_metal_warns_instead_of_guessing(
+        self, settings, earrings, us, copy_obj, quote
+    ):
+        # E1154 is two-tone white and rose gold; Amazon's metal_type has no single value for it.
+        [listing] = build(
+            AmazonMapper(settings),
+            earrings,
+            ListingRow(sku=earrings.sku, variation_source="none"),
+            us,
+            copy_obj,
+            quote,
+        )
+        assert "metal_type" not in listing.attributes
+        [warning] = [i for i in listing.issues if i.code == "MetalTypeUnresolved"]
+        assert not warning.blocking and "Two-Tone" in warning.message
+
+    def test_fallback_title_names_every_stone(self, earrings):
+        assert "Diamond and Emerald" in fallback_copy(earrings, "Anzor Jewelry").title

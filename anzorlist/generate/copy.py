@@ -336,7 +336,11 @@ def fallback_copy(product: Product, brand: str) -> ListingCopy:
     """
     attrs = product.attributes
     metal = " ".join(x for x in (attrs.metal_purity, attrs.metal_color, attrs.metal_type) if x)
-    gem = attrs.gemstones[0].type if attrs.gemstones else ""
+    stones: list[str] = []
+    for g in attrs.gemstones:
+        if g.type not in stones:
+            stones.append(g.type)
+    gem = " and ".join(stones)  # every stone the piece carries, not only the first
     title = " ".join(x for x in (brand, metal, gem, product.family.value) if x).strip()
 
     bullets = [f"{row.label}: {row.value}" for row in product.specs[:5]]
