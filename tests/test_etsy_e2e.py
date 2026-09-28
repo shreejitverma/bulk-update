@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from fake_etsy import FakeEtsy
 from test_amazon_upload_e2e import _white_jpeg, build_ok, env, run  # noqa: F401 - env is a fixture
+from test_ebay_e2e import _doctor_rows
 
 from anzorlist import cli
 from anzorlist.channels.etsy.client import EtsyClient
@@ -179,3 +180,32 @@ def test_a_failed_image_hosting_upload_does_not_block_etsy(
     run("build", "--no-copy")
     listing = json.loads((env["data"] / "etsy" / "build" / "E1154.json").read_text())
     assert listing["image_files"] and listing["issues"] == []
+
+
+def test_doctor_checks_etsy_setup(
+    env: dict[str, Any],  # noqa: F811
+    etsy: FakeEtsy,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANZOR_CHANNELS", "etsy")
+    monkeypatch.delenv("ETSY_SHOP_ID")
+    monkeypatch.delenv("ETSY_RETURN_POLICY_ID")
+    get_settings.cache_clear()
+    rows = _doctor_rows(monkeypatch)
+    assert rows["Etsy app"].startswith("OK")
+    assert rows["Etsy shared secret"].startswith("OK")
+    assert rows["Etsy authorization"].startswith("OK ETSY_REFRESH_TOKEN present")
+    assert rows["Etsy shop"].startswith("MISSING ETSY_SHOP_ID, ETSY_RETURN_POLICY_ID not set")
+    assert "ETSY_WHO_MADE=i_did, ETSY_WHEN_MADE=made_to_order" in rows["Etsy listing claims"]
+    assert not any(name.startswith("eBay") for name in rows)
+
+    # Once a rotated token is saved, it is what the client uses, even without the .env one.
+    token = env["data"] / "etsy" / "token.json"
+    token.parent.mkdir(parents=True)
+    token.write_text(json.dumps({"refresh_token": "rotated"}))
+    monkeypatch.delenv("ETSY_REFRESH_TOKEN")
+    monkeypatch.delenv("ETSY_API_KEY")
+    get_settings.cache_clear()
+    rows = _doctor_rows(monkeypatch)
+    assert rows["Etsy authorization"].startswith(f"OK rotated refresh token in {token}")
+    assert rows["Etsy app"].startswith("MISSING ETSY_API_KEY not set")

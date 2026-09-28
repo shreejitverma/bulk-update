@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from fake_ebay import FakeEbay
+from rich.console import Console
 from test_amazon_upload_e2e import build_ok, env, run  # noqa: F401 - env is a fixture
 
 from anzorlist import cli
@@ -102,3 +103,39 @@ def test_blocked_listing_is_not_sent(env: dict[str, Any], ebay: FakeEbay) -> Non
     assert result.exit_code == 1
     assert run("ebay", "submit", "--confirm", input="y\n").exit_code == 1
     assert ebay.published == []
+
+
+def _doctor_rows(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    """Run `doctor` wide enough that no row wraps, and return each row's text by check name."""
+    monkeypatch.setattr(cli, "console", Console(width=400))
+    result = run("doctor")
+    assert result.exit_code == 0, result.output
+    rows: dict[str, str] = {}
+    for line in result.output.splitlines():
+        cells = [c.strip() for c in line.split("│")]
+        if len(cells) == 5 and cells[1]:
+            rows[cells[1]] = f"{cells[2]} {cells[3]}"
+    return rows
+
+
+def test_doctor_checks_ebay_setup(
+    ebay: FakeEbay,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANZOR_CHANNELS", "amazon,ebay")
+    get_settings.cache_clear()
+    rows = _doctor_rows(monkeypatch)
+    assert rows["eBay credentials"].startswith("OK")
+    assert rows["eBay policies"].startswith("OK")
+    assert rows["eBay environment"].startswith("OK SANDBOX")
+    assert not any(name.startswith("Etsy") for name in rows)
+
+    monkeypatch.delenv("EBAY_REFRESH_TOKEN")
+    monkeypatch.delenv("EBAY_MERCHANT_LOCATION_KEY")
+    monkeypatch.setenv("EBAY_ENV", "LIVE")
+    get_settings.cache_clear()
+    rows = _doctor_rows(monkeypatch)
+    assert rows["eBay credentials"].startswith("MISSING EBAY_REFRESH_TOKEN not set")
+    assert rows["eBay policies"].startswith("MISSING EBAY_MERCHANT_LOCATION_KEY not set")
+    assert "anzorlist ebay setup" in rows["eBay policies"]
+    assert rows["eBay environment"].startswith("MISSING EBAY_ENV is 'LIVE'")

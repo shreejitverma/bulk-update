@@ -36,6 +36,8 @@ from anzorlist.pipeline import BuildOptions, BuildPipeline, BuildReport
 from anzorlist.store.db import Ledger, new_run_id
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from anzorlist.channels.amazon.client import ClientPool
     from anzorlist.channels.ebay.client import EbayClient
     from anzorlist.channels.etsy.client import EtsyClient
@@ -173,6 +175,12 @@ def doctor() -> None:
         except MissingCredential as exc:
             add(f"auth: {region.value.upper()}", False, f"{codes} — {exc.var} is not set")
 
+    channels = s.channel_set()
+    if "ebay" in channels:
+        _doctor_ebay(s, add)
+    if "etsy" in channels:
+        _doctor_etsy(s, add)
+
     add(
         "live writes",
         None,
@@ -188,6 +196,120 @@ def doctor() -> None:
     console.print(
         f"\nCached Amazon product-type schemas: [bold]{len(schemas)}[/]"
         + ("" if schemas else "  (run `anzorlist amazon sync-schemas` once credentials exist)")
+    )
+
+
+def _unset(values: dict[str, object]) -> list[str]:
+    return [var for var, value in values.items() if not value]
+
+
+def _doctor_ebay(s: Settings, add: Callable[[str, bool | None, str], None]) -> None:
+    env = s.ebay_env.upper()
+    add(
+        "eBay environment",
+        env in ("SANDBOX", "PRODUCTION"),
+        (
+            f"{env}, marketplace {s.ebay_marketplace_id}"
+            if env in ("SANDBOX", "PRODUCTION")
+            else f"EBAY_ENV is {s.ebay_env!r} — set it to SANDBOX or PRODUCTION"
+        ),
+    )
+    missing = _unset(
+        {
+            "EBAY_CLIENT_ID": s.ebay_client_id,
+            "EBAY_CLIENT_SECRET": s.ebay_client_secret,
+            "EBAY_REFRESH_TOKEN": s.ebay_refresh_token,
+        }
+    )
+    add(
+        "eBay credentials",
+        not missing,
+        (
+            "keyset and user token present"
+            if not missing
+            else f"{', '.join(missing)} not set — create a keyset and a user token "
+            "(docs/RUNBOOK.md, section eBay)"
+        ),
+    )
+    missing = _unset(
+        {
+            "EBAY_FULFILLMENT_POLICY_ID": s.ebay_fulfillment_policy_id,
+            "EBAY_PAYMENT_POLICY_ID": s.ebay_payment_policy_id,
+            "EBAY_RETURN_POLICY_ID": s.ebay_return_policy_id,
+            "EBAY_MERCHANT_LOCATION_KEY": s.ebay_merchant_location_key,
+        }
+    )
+    add(
+        "eBay policies",
+        not missing,
+        (
+            "business policies and inventory location set"
+            if not missing
+            else f"{', '.join(missing)} not set — run `anzorlist ebay setup` to list the ids"
+        ),
+    )
+
+
+def _doctor_etsy(s: Settings, add: Callable[[str, bool | None, str], None]) -> None:
+    add(
+        "Etsy app",
+        s.etsy_api_key is not None,
+        (
+            "keystring present"
+            if s.etsy_api_key
+            else "ETSY_API_KEY not set — create an app at etsy.com/developers "
+            "(docs/RUNBOOK.md, section Etsy)"
+        ),
+    )
+    add(
+        "Etsy shared secret",
+        True if s.etsy_shared_secret else None,
+        (
+            "present; sent with the keystring"
+            if s.etsy_shared_secret
+            else "ETSY_SHARED_SECRET not set — requests send the keystring alone; "
+            "copy the app's shared secret"
+        ),
+    )
+    # The client prefers the rotated token it saved over the one in .env.
+    token_file = s.data_dir / "etsy" / "token.json"
+    add(
+        "Etsy authorization",
+        token_file.exists() or s.etsy_refresh_token is not None,
+        (
+            f"rotated refresh token in {token_file}"
+            if token_file.exists()
+            else (
+                "ETSY_REFRESH_TOKEN present"
+                if s.etsy_refresh_token
+                else "ETSY_REFRESH_TOKEN not set — authorize the shop with OAuth 2 "
+                "(docs/RUNBOOK.md, section Etsy)"
+            )
+        ),
+    )
+    missing = _unset(
+        {
+            "ETSY_SHOP_ID": s.etsy_shop_id,
+            "ETSY_SHIPPING_PROFILE_ID": s.etsy_shipping_profile_id,
+            "ETSY_RETURN_POLICY_ID": s.etsy_return_policy_id,
+        }
+    )
+    add(
+        "Etsy shop",
+        not missing,
+        (
+            f"shop {s.etsy_shop_id}, shipping profile {s.etsy_shipping_profile_id}, "
+            f"return policy {s.etsy_return_policy_id}"
+            if not missing
+            else f"{', '.join(missing)} not set — copy the ids from Shop Manager "
+            "(docs/RUNBOOK.md, section Etsy)"
+        ),
+    )
+    add(
+        "Etsy listing claims",
+        None,
+        f"ETSY_WHO_MADE={s.etsy_who_made}, ETSY_WHEN_MADE={s.etsy_when_made} — "
+        "confirm both describe the catalog",
     )
 
 

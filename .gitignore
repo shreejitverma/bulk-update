@@ -37,3 +37,6 @@ data/etsy/
 # Operator product photos (large binaries, not source)
 images/
 *.backup.xlsx
+
+# Local tasks-axi backlog
+backlog.md

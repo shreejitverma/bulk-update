@@ -172,7 +172,7 @@ SPAPI_SELLER_ID_NA=A1XXXXXXXXXXXX          # the Merchant Token from step 1
 ### 4d. Verify
 
 ```bash
-anzorlist doctor                 # every row should read OK
+anzorlist doctor                 # every Amazon row should read OK
 anzorlist amazon preflight       # confirms marketplace registration
 anzorlist amazon sync-schemas    # caches Amazon's real JSON schemas
 ```
@@ -365,6 +365,8 @@ EBAY_RETURN_POLICY_ID=...
 EBAY_MERCHANT_LOCATION_KEY=...
 ```
 
+   `anzorlist doctor` then names any eBay setting still missing; its eBay and Etsy rows appear for the channels in `ANZOR_CHANNELS`.
+
 5. **Publish:**
 
 ```bash
@@ -395,6 +397,7 @@ Etsy accepts JPEG, PNG and GIF only; `build` holds a listing whose photos are TI
    If Etsy asks for a processing profile, set `ETSY_READINESS_STATE_ID`.
    Set `ETSY_WHO_MADE` to who makes the items: `i_did` (the default), `someone_else` or `collective`.
    It is sent as Etsy's `who_made`, and only `i_did` adds the `handmade jewelry` tag.
+   `anzorlist doctor` names any Etsy setting still missing.
 4. **Publish:**
 
 ```bash
