@@ -1,7 +1,7 @@
 # anzorlist
 
-Turn products on [anzorjewelrycorp.com](https://www.anzorjewelrycorp.com) into Amazon listings —
-without letting anything reach the marketplace unreviewed.
+Turn products on [anzorjewelrycorp.com](https://www.anzorjewelrycorp.com) into Amazon, eBay and
+Etsy listings — without letting anything reach the marketplace unreviewed.
 
 You fill in SKUs. The system extracts each product from the website, writes compliant copy from
 the extracted facts, prices it so Amazon's fee doesn't eat your margin, hosts the images, builds
@@ -86,11 +86,11 @@ flag nor a stale config value can cause a write alone.
 | `amazon submit --confirm` | SP-API (**write**) | Creates listings, one previewed call per listing |
 | `amazon submit --confirm --feed` | SP-API (**write**) | Bulk: parents per item, the rest in `JSON_LISTINGS_FEED` documents |
 | `amazon feed-status [FEED_ID]` | SP-API (read) | Reconcile a bulk feed's per-listing results into the ledger; no id lists unreconciled feeds |
+| `amazon status [SKU]` | none | Ledger state and submission history |
+| `amazon delete --confirm` | SP-API (**write**) | Remove an offer |
 | `ebay setup` | eBay (read) | List business policy ids and inventory locations for `.env` |
 | `ebay submit --confirm [SKUS...]` | eBay (**write**) | Bulk-stage items and offers, then publish; idempotent on rerun |
 | `etsy submit --confirm [SKUS...]` | Etsy (**write**) | Create or update, upload photos, set sizes, activate; idempotent on rerun |
-| `amazon status [SKU]` | none | Ledger state and submission history |
-| `amazon delete --confirm` | SP-API (**write**) | Remove an offer |
 
 Exit codes: `0` done, `1` something failed or was blocked, `2` refused by a safety gate or bad setup,
 `3` accepted by Amazon but the result is not known yet (reconcile with `amazon feed-status`).
@@ -121,8 +121,10 @@ anzorlist/
   media/               download, Amazon-requirement checks, R2 hosting
   channels/amazon/     auth, rate-limited transport, definitions, preflight, listings, feeds, mapper,
                        build artifacts on disk, submission planning
+  channels/ebay/       OAuth client, mapper (80-char titles, size groups), bulk stage and publish
+  channels/etsy/       OAuth client (rotating refresh token), mapper, create/update, photo sync
   store/               SQLite submission ledger
-docs/RUNBOOK.md        SP-API registration, GTIN exemption, first live listing
+docs/RUNBOOK.md        SP-API registration, GTIN exemption, first live listing; eBay and Etsy setup
 ```
 
 ## Tests
@@ -140,6 +142,9 @@ regression that fails silently.
 `feed-status` against a fake Amazon (`tests/fake_amazon.py`) that speaks LWA, Listings Items,
 Feeds, and presigned S3 in Amazon's documented shapes, so the whole upload path is exercised
 before a live account exists.
+
+`test_ebay_e2e.py` and `test_etsy_e2e.py` do the same for `ebay submit` and `etsy submit` against
+`tests/fake_ebay.py` and `tests/fake_etsy.py`.
 
 ## Status
 

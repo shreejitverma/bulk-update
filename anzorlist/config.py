@@ -104,7 +104,7 @@ class Settings(BaseSettings):
     channels: str = Field(default="amazon,ebay,etsy", alias="ANZOR_CHANNELS")
     use_sandbox: bool = Field(default=False, alias="SPAPI_SANDBOX")
 
-    # ---- eBay Sell APIs (Inventory + Account + Taxonomy) ----
+    # ---- eBay Sell APIs (Inventory + Account) ----
     ebay_env: str = Field(default="SANDBOX", alias="EBAY_ENV")  # SANDBOX or PRODUCTION
     ebay_client_id: SecretStr | None = Field(default=None, alias="EBAY_CLIENT_ID")
     ebay_client_secret: SecretStr | None = Field(default=None, alias="EBAY_CLIENT_SECRET")
