@@ -320,14 +320,14 @@ def _print_build_report(report: BuildReport, s: Settings) -> None:
 
     for b in report.builds:
         if b.errors:
-            status = "[red]" + "; ".join(b.errors)[:240] + "[/]"
+            status = "[red]" + "; ".join(b.errors) + "[/]"
         else:
             blocking = [i for listing in b.listings for i in listing.blocking_issues]
             warnings = [i for listing in b.listings for i in listing.issues if not i.blocking]
             if blocking:
                 # Lead with a root cause, not the parent's derived "family is blocked" note.
                 cause = next((i for i in blocking if i.code != "FamilyBlocked"), blocking[0])
-                status = f"[red]{len(blocking)} blocking[/]: {cause.message[:240]}"
+                status = f"[red]{len(blocking)} blocking[/]: {cause.message}"
             elif warnings:
                 status = f"[yellow]{len(warnings)} warning(s)[/]"
             else:
@@ -690,11 +690,13 @@ def amazon_submit(
     finally:
         pool.close()
 
-    console.print(
-        "\n[bold]Accepted listings are created but not yet buyable.[/] Amazon processes new "
-        "fine-jewelry listings asynchronously; check [cyan]anzorlist amazon status[/] in a few "
-        "minutes, then confirm the detail pages in Seller Central before enabling inventory."
-    )
+    if any(o.accepted for o in outcomes):
+        console.print(
+            "\n[bold]Accepted listings are created but not yet buyable.[/] Amazon processes new "
+            "fine-jewelry listings asynchronously; check [cyan]anzorlist amazon status[/] in a "
+            "few minutes, then confirm the detail pages in Seller Central before enabling "
+            "inventory."
+        )
     if plan.blocked or plan.orphaned or any(not o.accepted for o in outcomes):
         raise typer.Exit(1)
     if pending:
@@ -863,7 +865,8 @@ def amazon_delete(
 
 
 def _print_outcomes(outcomes: list[SubmissionOutcome], title: str) -> None:
-    table = Table(title=title, show_lines=False)
+    # A narrow table would otherwise wrap the title and split the run id mid-token.
+    table = Table(title=title, show_lines=False, min_width=len(title))
     table.add_column("SKU", style="cyan", no_wrap=True)
     table.add_column("Mkt", no_wrap=True)
     table.add_column("Result", no_wrap=True)

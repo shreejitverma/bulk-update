@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -144,6 +145,10 @@ def test_missing_images_explain_the_fix(
     env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     shutil.rmtree(env["root"] / "images" / "R985")
+    # An operator's images folder can sit deep in their home directory; the message names it.
+    images = env["root"] / ("operator-workspace-" * 8) / "images"
+    monkeypatch.setenv("ANZOR_IMAGES_DIR", str(images))
+    get_settings.cache_clear()
     # The site's own photo is 400px; serve that size for the website image download.
     small = io.BytesIO()
     Image.new("RGB", (400, 400), (255, 255, 255)).save(small, format="JPEG")
@@ -168,12 +173,17 @@ def test_missing_images_explain_the_fix(
         self._http = _Http()  # type: ignore[assignment]
 
     monkeypatch.setattr(MediaPipeline, "__init__", init)
+    # Wide enough that the report prints each message on one line, so it can be read whole.
+    monkeypatch.setattr(cli.console, "_width", 1000)
     result = run("build", "--no-copy", "R985")
     assert result.exit_code == 1
+    # The build report (stdout; the log lines go to stderr) shows the whole fix, including the
+    # folder the photos go in.
+    assert str(images / "R985") in result.stdout
     parent = json.loads((env["data"] / "build" / "US" / "R985" / "R985-7.json").read_text())
     [issue] = [i for i in parent["issues"] if i["code"] == "NoMainImage"]
     assert "400px" in issue["message"]
-    assert str(env["root"] / "images" / "R985") in issue["message"]
+    assert str(images / "R985") in issue["message"]
     # With every child blocked, the parent is blocked too rather than reported as ready.
     head = json.loads((env["data"] / "build" / "US" / "R985" / "R985-PARENT.json").read_text())
     assert "FamilyBlocked" in {i["code"] for i in head["issues"]}
@@ -226,6 +236,7 @@ def test_submit_per_item_parent_first_previewed_and_idempotent(env: dict[str, An
         if call.mode == "SUBMIT":
             assert calls[i - 1].sku == call.sku and calls[i - 1].mode == "VALIDATION_PREVIEW"
     assert ledger_status("R985-7") == "submitted"
+    assert "not yet buyable" in result.output
 
     again = run("amazon", "submit", "--confirm", input="y\n")
     assert again.exit_code == 0
@@ -249,6 +260,7 @@ def test_children_of_a_rejected_parent_are_not_sent(env: dict[str, Any]) -> None
     assert result.exit_code == 1
     assert [c.sku for c in env["fake"].writes()] == ["R985-PARENT"]
     assert "ParentNotCreated" in result.output
+    assert "not yet buyable" not in result.output  # nothing was accepted
 
 
 def test_rows_set_to_include_n_are_not_submitted(env: dict[str, Any]) -> None:
@@ -276,7 +288,10 @@ def test_an_edited_artifact_is_resubmitted_alone(env: dict[str, Any]) -> None:
     artifact["attributes"]["item_name"][0]["value"] = "Edited After Review"
     path.write_text(json.dumps(artifact))
 
-    assert run("amazon", "submit", "--confirm", input="y\n").exit_code == 0
+    result = run("amazon", "submit", "--confirm", input="y\n")
+    assert result.exit_code == 0
+    # The one-row outcome table is narrow; its title still shows the run id on one line.
+    assert re.search(r"Submission submit-\d{8}T\d{12}Z-[0-9a-f]{6}\b", result.output)
     new_writes = env["fake"].writes()[before:]
     assert [c.sku for c in new_writes] == ["E1154"]
     assert new_writes[0].body["attributes"]["item_name"][0]["value"] == "Edited After Review"
