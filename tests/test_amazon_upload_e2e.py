@@ -425,7 +425,8 @@ def test_a_missing_workbook_refuses_instead_of_selecting_everything(env: dict[st
     for args in (("validate",), ("submit", "--confirm")):
         result = run("amazon", *args, input="y\n")
         assert result.exit_code == 2, result.output
-        assert "name the SKUs explicitly" in result.output
+        # Rich wraps at the terminal width, and where it breaks depends on the tmp path length.
+        assert "name the SKUs explicitly" in " ".join(result.output.split())
     assert env["fake"].listing_calls == []
 
 
