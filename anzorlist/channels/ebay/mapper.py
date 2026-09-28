@@ -169,9 +169,7 @@ class EbayMapper:
         aspects: dict[str, list[str]] = {
             "Brand": [self.settings.brand_name],
             "Type": [FAMILY_TYPE[product.family]],
-            "Country of Origin": ["United States"]
-            if self.settings.country_of_origin == "US"
-            else [self.settings.country_of_origin],
+            "Country of Origin": [_country_name(self.settings.country_of_origin)],
         }
         metal = _metal_aspect(row.metal_type, a.metal_type, a.metal_color)
         if metal:
@@ -244,6 +242,11 @@ def ebay_title(product: Product, brand: str) -> str:
         if x
     )
     return fallback[:MAX_TITLE]
+
+
+def _country_name(code: str) -> str:
+    """eBay's Country of Origin aspect takes a name, not an ISO code."""
+    return {"US": "United States"}.get(code.upper(), code)
 
 
 def description_html(description: str, bullets: list[str]) -> str:
