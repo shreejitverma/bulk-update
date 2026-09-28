@@ -291,7 +291,7 @@ class Ledger:
     """
 
     def live_skus(self, marketplace_id: str | None = None) -> list[LedgerEntry]:
-        """Every SKU believed to exist on Amazon. This is the rollback list.
+        """Every SKU believed to exist in a marketplace, on any channel. This is the rollback list.
 
         Derived from the write history, not from ``listings.status``: that column records the
         latest event of any kind, so a failed preview, an in-flight feed, or a rejected *update*
@@ -307,8 +307,8 @@ class Ledger:
         return [LedgerEntry(**dict(r)) for r in rows]
 
     def is_live(self, sku: str, marketplace_id: str) -> bool:
-        """Whether this SKU exists on Amazon, by the same rule as :meth:`live_skus`, whatever
-        payload was last accepted for it."""
+        """Whether this SKU exists in the marketplace, by the same rule as :meth:`live_skus`,
+        whatever payload was last accepted for it."""
         row = self._conn.execute(
             self._LIVE_SQL + " AND s.sku = ? AND s.marketplace_id = ?", (sku, marketplace_id)
         ).fetchone()

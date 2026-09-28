@@ -1,13 +1,14 @@
 """Create and update Etsy listings.
 
 Etsy has no SKU-keyed upsert, so the numeric ``listing_id`` for each website SKU is recorded in
-``data/etsy/listings.json`` the moment Etsy returns it, together with the digests of the images
-already uploaded. A rerun after any failure therefore updates the same listing instead of
-creating a second one, and never uploads the same photo twice.
+``data/etsy/listings.json`` the moment Etsy returns it, together with the ``listing_image_id`` of
+each photo uploaded, keyed by the photo's digest. A rerun after any failure therefore updates the
+same listing instead of creating a second one, and never uploads the same photo twice.
 
-Order of operations: create (as a draft) or update the listing, upload new images, set the
-inventory (sizes with their own prices), then activate. Activation is the step that makes it
-visible and incurs Etsy's listing fee, and it needs both safety gates.
+Order of operations: create (as a draft) or update the listing, delete the listing's photos that
+are no longer in the build, upload new ones, set the inventory (sizes with their own prices), then
+activate. Activation is the step that makes it visible and incurs Etsy's listing fee, and it needs
+both safety gates.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from typing import Any
 import structlog
 
 from anzorlist.channels.etsy.client import EtsyClient, EtsyError
-from anzorlist.channels.etsy.models import EtsyListing
+from anzorlist.channels.etsy.models import IMAGE_TYPES, EtsyListing
 from anzorlist.config import Settings
 from anzorlist.models.listing import ListingIssue, ListingStatus, SubmissionOutcome
 
@@ -44,7 +45,7 @@ class EtsyLiveWriteBlocked(RuntimeError):
 
 
 class EtsyState:
-    """listing_id and uploaded image digests per website SKU, persisted after every change."""
+    """listing_id and {image digest: listing_image_id} per website SKU, saved after every change."""
 
     def __init__(self, data_dir: Path) -> None:
         self.path = data_dir / "etsy" / "listings.json"
@@ -53,7 +54,7 @@ class EtsyState:
         )
 
     def get(self, sku: str) -> dict[str, Any]:
-        return self._data.setdefault(sku, {"listing_id": None, "images": []})
+        return self._data.setdefault(sku, {"listing_id": None, "images": {}})
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -98,7 +99,6 @@ class EtsyPublisher:
                 "taxonomy_id": self.taxonomy_id(listing.family),
                 "shipping_profile_id": int(cfg["ETSY_SHIPPING_PROFILE_ID"]),
                 "return_policy_id": int(cfg["ETSY_RETURN_POLICY_ID"]),
-                "who_made": "i_did",
                 "when_made": self._settings.etsy_when_made,
                 "is_supply": False,
                 "type": "physical",
@@ -123,18 +123,32 @@ class EtsyPublisher:
                 )
             listing_id = state["listing_id"]
 
-            for rank, path in enumerate(listing.image_files, start=1):
-                data = Path(path).read_bytes()
-                digest = hashlib.sha256(data).hexdigest()
-                if digest in state["images"]:
+            photos = [Path(path).read_bytes() for path in listing.image_files]
+            wanted = [hashlib.sha256(data).hexdigest() for data in photos]
+            images: dict[str, int] = state["images"]
+            for digest in [d for d in images if d not in wanted]:
+                try:
+                    self._client.request(
+                        "DELETE", f"{shop}/listings/{listing_id}/images/{images[digest]}"
+                    )
+                except EtsyError as exc:
+                    if exc.status != 404:  # already removed in Shop Manager
+                        raise
+                del images[digest]
+                self._state.save()
+            for rank, (path, data, digest) in enumerate(
+                zip(listing.image_files, photos, wanted, strict=True), start=1
+            ):
+                if digest in images:
                     continue
-                self._client.request(
+                name = Path(path).name
+                uploaded = self._client.request(
                     "POST",
                     f"{shop}/listings/{listing_id}/images",
-                    files={"image": (Path(path).name, data, "image/jpeg")},
+                    files={"image": (name, data, IMAGE_TYPES[Path(path).suffix.lower()])},
                     data={"rank": str(rank)},
                 )
-                state["images"].append(digest)
+                images[digest] = int(uploaded["listing_image_id"])
                 self._state.save()
 
             self._client.request(

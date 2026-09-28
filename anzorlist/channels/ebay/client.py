@@ -1,13 +1,9 @@
 """eBay REST transport: OAuth tokens, retries, and eBay's error format.
 
-Two token kinds, because eBay splits its APIs by whose data they touch:
-
-* a **user token**, minted from the seller's refresh token, for the Inventory and Account APIs
-  (they act on the seller's listings and policies);
-* an **application token** (client credentials) for the Taxonomy API, which is public metadata.
-
-Both expire after about two hours and are cached until five minutes before expiry. The refresh
-token itself lasts about 18 months and is not rotated by a refresh, so it can live in ``.env``.
+Every call uses a **user token**, minted from the seller's refresh token, for the Inventory and
+Account APIs (they act on the seller's listings and policies). It expires after about two hours
+and is cached until five minutes before expiry. The refresh token itself lasts about 18 months
+and is not rotated by a refresh, so it can live in ``.env``.
 
 Retries follow the same rules as the SP-API transport: 429 and 5xx back off and retry; any other
 4xx is deterministic and raised immediately with eBay's own error ids, because those ids (25002,
@@ -40,7 +36,6 @@ USER_SCOPES = (
     "https://api.ebay.com/oauth/api_scope/sell.inventory",
     "https://api.ebay.com/oauth/api_scope/sell.account",
 )
-APP_SCOPES = ("https://api.ebay.com/oauth/api_scope",)
 EXPIRY_SKEW_SECONDS = 300
 MAX_ATTEMPTS = 5
 
@@ -91,7 +86,7 @@ class EbayClient:
             timeout=httpx.Timeout(60.0, connect=15.0),
             headers={"accept": "application/json"},
         )
-        self._tokens: dict[str, _Token] = {}
+        self._access: _Token | None = None
         self._lock = threading.Lock()
 
     def close(self) -> None:
@@ -105,21 +100,16 @@ class EbayClient:
 
     # ------------------------------------------------------------------ tokens
 
-    def _token(self, kind: Literal["user", "app"]) -> str:
+    def _token(self) -> str:
         with self._lock:
-            cached = self._tokens.get(kind)
-            if cached is not None and cached.valid():
-                return cached.value
+            if self._access is not None and self._access.valid():
+                return self._access.value
             client_id, client_secret, refresh_token = self.settings.ebay_credentials()
-            data = (
-                {
-                    "grant_type": "refresh_token",
-                    "refresh_token": refresh_token,
-                    "scope": " ".join(USER_SCOPES),
-                }
-                if kind == "user"
-                else {"grant_type": "client_credentials", "scope": " ".join(APP_SCOPES)}
-            )
+            data = {
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "scope": " ".join(USER_SCOPES),
+            }
             basic = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
             resp = self._http.post(
                 f"{self.base_url}{TOKEN_PATH}",
@@ -148,12 +138,11 @@ class EbayClient:
                     f"{body.get('error_description', resp.text[:200])}. {hint}".strip()
                 )
             payload = resp.json()
-            token = _Token(
+            self._access = _Token(
                 str(payload["access_token"]),
                 time.monotonic() + float(payload.get("expires_in", 7200)),
             )
-            self._tokens[kind] = token
-            return token.value
+            return self._access.value
 
     # ------------------------------------------------------------------ requests
 
@@ -164,7 +153,6 @@ class EbayClient:
         *,
         json_body: Any = None,
         params: dict[str, Any] | None = None,
-        token: Literal["user", "app"] = "user",
         ok_statuses: tuple[int, ...] = (),
     ) -> tuple[int, Any]:
         """One call with retry. Returns (status, decoded JSON or None).
@@ -176,7 +164,7 @@ class EbayClient:
         last: Exception | None = None
         for attempt in range(1, MAX_ATTEMPTS + 1):
             headers = {
-                "Authorization": f"Bearer {self._token(token)}",
+                "Authorization": f"Bearer {self._token()}",
                 # The Inventory API requires Content-Language on writes, and rejects a mismatch
                 # with the marketplace's language.
                 "Content-Language": "en-US",
@@ -199,7 +187,7 @@ class EbayClient:
             if resp.status_code == 401 and attempt == 1:
                 # An expired token looks like any other 401; mint a fresh one once.
                 with self._lock:
-                    self._tokens.pop(token, None)
+                    self._access = None
                 continue
             if resp.status_code == 429 or resp.status_code >= 500:
                 last = EbayError(resp.status_code, method, path, errors)

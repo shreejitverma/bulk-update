@@ -383,6 +383,7 @@ Rerunning after a rejection updates the existing offers rather than creating dup
 ## Etsy
 
 Etsy takes photo files directly, so it needs no image hosting, but it does need operator photos of at least Etsy's recommended size in `images/<SKU>/`.
+Etsy accepts JPEG, PNG and GIF only; `build` holds a listing whose photos are TIFF.
 
 1. **App.** [etsy.com/developers](https://www.etsy.com/developers) → Create a New App.
    The keystring is `ETSY_API_KEY`, the shared secret is `ETSY_SHARED_SECRET`.
@@ -392,6 +393,8 @@ Etsy takes photo files directly, so it needs no image hosting, but it does need 
 3. **Shop settings.** Your numeric shop id is `ETSY_SHOP_ID`.
    Create a shipping profile and a return policy in Shop Manager and set `ETSY_SHIPPING_PROFILE_ID` and `ETSY_RETURN_POLICY_ID`.
    If Etsy asks for a processing profile, set `ETSY_READINESS_STATE_ID`.
+   Set `ETSY_WHO_MADE` to who makes the items: `i_did` (the default), `someone_else` or `collective`.
+   It is sent as Etsy's `who_made`, and only `i_did` adds the `handmade jewelry` tag.
 4. **Publish:**
 
 ```bash
@@ -402,6 +405,8 @@ anzorlist etsy submit --confirm R985   # one SKU first; ANZOR_ALLOW_LIVE=true is
 Each activation incurs Etsy's listing fee.
 Taxonomy ids come from Etsy's own seller taxonomy (Jewelry > Rings, Earrings, Necklaces, Bracelets) at run time.
 Ring sizes become inventory products on one listing, each with its own price and SKU.
-Each SKU's `listing_id` and uploaded photos are recorded in `data/etsy/listings.json`, so a rerun after any failure updates the same listing and never uploads a photo twice.
+Each SKU's `listing_id` and uploaded photos (their `listing_image_id`, keyed by content digest) are recorded in `data/etsy/listings.json`, so a rerun after any failure updates the same listing and never uploads a photo twice.
+When a photo in `images/<SKU>/` is replaced or removed, the next submit deletes the old photo from the listing before uploading the new one.
+A title may use each of `%`, `:`, `&` and `+` only once; `build` holds a listing whose Title Override breaks that rule.
 Do not delete that file while listings exist; without it the next run would create duplicates.
 

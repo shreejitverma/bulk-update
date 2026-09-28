@@ -30,7 +30,7 @@ from anzorlist.config import MissingCredential, Settings
 from anzorlist.config import settings as get_settings
 from anzorlist.ingest import read_workbook, write_template
 from anzorlist.ingest.row import ListingRow
-from anzorlist.marketplaces import group_by_region, resolve, resolve_all
+from anzorlist.marketplaces import BY_ID, group_by_region, resolve, resolve_all
 from anzorlist.models.listing import BuiltListing, SubmissionOutcome
 from anzorlist.pipeline import BuildOptions, BuildPipeline, BuildReport
 from anzorlist.store.db import Ledger, new_run_id
@@ -831,7 +831,7 @@ def amazon_status(
         for k, v in sorted(summary.items(), key=lambda kv: -kv[1]):
             table.add_row(k, str(v))
         console.print(table)
-        live = ledger.live_skus()
+        live = [e for e in ledger.live_skus() if e.marketplace_id in BY_ID]
         console.print(f"\n[bold]{len(live)}[/] SKU(s) believed to exist on Amazon.")
         for run in ledger.recent_runs(5):
             console.print(

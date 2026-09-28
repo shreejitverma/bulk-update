@@ -212,7 +212,6 @@ class MediaPipeline:
                         try:
                             image.public_url = uploader.upload(image)
                         except Exception as exc:  # noqa: BLE001 - one SKU must not stop the run
-                            image.errors.append(f"upload to image hosting failed: {exc}")
                             result.hosting_note = f"upload to image hosting failed: {exc}"
                             log.error("media.upload_failed", sku=product.sku, error=str(exc))
             else:

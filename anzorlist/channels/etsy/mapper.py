@@ -3,6 +3,8 @@
 Title, tags and materials are composed from extracted facts, like eBay's title, so no qualifier
 can be lost to a length limit: Etsy titles are capped at 140 characters, a listing takes at most
 13 tags of at most 20 characters, and materials may contain only letters, numbers and spaces.
+A title may use each of ``%``, ``:``, ``&`` and ``+`` only once, so the generated title names
+several stones as "Diamond, Ruby & Sapphire", and a workbook title that breaks the rule is held.
 The description is the validated copy as plain text; Etsy does not render HTML.
 """
 
@@ -10,10 +12,11 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 
 from anzorlist.channels.amazon.mapper import AmazonMapper, size_label
 from anzorlist.channels.ebay.mapper import AXIS_ASPECT, FAMILY_TYPE, ebay_title
-from anzorlist.channels.etsy.models import EtsyListing, EtsyVariation
+from anzorlist.channels.etsy.models import IMAGE_TYPES, EtsyListing, EtsyVariation
 from anzorlist.config import Settings
 from anzorlist.generate.copy import ListingCopy
 from anzorlist.ingest.row import ListingRow
@@ -24,6 +27,7 @@ from anzorlist.pricing import PriceQuote, quantize
 MAX_TITLE = 140
 MAX_TAGS = 13
 MAX_TAG_LEN = 20
+TITLE_ONCE = "%:&+"
 _MATERIAL_UNSAFE = re.compile(r"[^A-Za-z0-9 ]+")
 _TAG_UNSAFE = re.compile(r"[^A-Za-z0-9 '-]+")
 
@@ -46,6 +50,14 @@ class EtsyMapper:
         title = row.item_name_override or ebay_title(product, self.settings.brand_name, MAX_TITLE)
         if len(title) > MAX_TITLE:
             title = ebay_title(product, self.settings.brand_name, MAX_TITLE)
+        repeated = [c for c in TITLE_ONCE if title.count(c) > 1]
+        if repeated:
+            issues.append(
+                ListingIssue(
+                    code="EtsyTitleRule",
+                    message=f"Etsy allows each of {', '.join(repeated)} once in a title: {title!r}",
+                )
+            )
 
         stones: list[str] = []
         for g in a.gemstones:
@@ -56,6 +68,7 @@ class EtsyMapper:
 
         metal = " ".join(x for x in (a.metal_purity, a.metal_color, a.metal_type) if x)
         materials = [_MATERIAL_UNSAFE.sub(" ", m).strip() for m in [metal, *stones] if m]
+        who_made = self.settings.etsy_who_made
         tags = _tags(
             [
                 FAMILY_TYPE[product.family],
@@ -65,7 +78,7 @@ class EtsyMapper:
                 *stones,
                 row.style or "",
                 "fine jewelry",
-                "handmade jewelry",
+                "handmade jewelry" if who_made == "i_did" else "",
             ]
         )
 
@@ -88,6 +101,16 @@ class EtsyMapper:
             issues.append(
                 ListingIssue(code="NoMainImage", message="no checked image file; Etsy needs one")
             )
+        image_files = image_files[:10]  # Etsy allows 10 images per listing
+        unsupported = [f for f in image_files if Path(f).suffix.lower() not in IMAGE_TYPES]
+        if unsupported:
+            issues.append(
+                ListingIssue(
+                    code="EtsyImageFormat",
+                    message="Etsy accepts JPEG, PNG and GIF photos only; convert "
+                    + ", ".join(Path(f).name for f in unsupported),
+                )
+            )
         description = "\n\n".join(
             [
                 row.description_override or copy.description,
@@ -99,12 +122,13 @@ class EtsyMapper:
             family=FAMILY_TYPE[product.family],
             title=title,
             description=description,
+            who_made=who_made,
             price=min([quote.price, *[v.price for v in variations]]),
             currency=quote.currency,
             quantity=quantity,
             tags=tags,
             materials=materials,
-            image_files=image_files[:10],  # Etsy allows 10 images per listing
+            image_files=image_files,
             variation_property=prop,
             variations=variations,
             issues=issues,

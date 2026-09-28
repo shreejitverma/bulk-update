@@ -25,6 +25,14 @@ from anzorlist.models.listing import ListingIssue
 # Etsy's reserved property ids for seller-defined variations.
 CUSTOM_PROPERTY_ID = 513
 
+# The photo formats Etsy's uploadListingImage accepts, by file suffix, with their content types.
+IMAGE_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+}
+
 
 class EtsyVariation(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -41,6 +49,7 @@ class EtsyListing(BaseModel):
     family: str  # Ring, Earrings, ... - resolved to a taxonomy id against Etsy's own tree
     title: str
     description: str
+    who_made: str  # i_did, someone_else, collective (ETSY_WHO_MADE)
     price: Decimal  # the base (single-item, or lowest-size) price
     currency: str
     quantity: int
@@ -75,6 +84,7 @@ class EtsyListing(BaseModel):
             "description": self.description,
             "tags": self.tags,
             "materials": self.materials,
+            "who_made": self.who_made,
         }
 
     def inventory_body(self) -> dict[str, Any]:

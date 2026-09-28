@@ -18,6 +18,7 @@ from __future__ import annotations
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -123,6 +124,10 @@ class Settings(BaseSettings):
     etsy_return_policy_id: str | None = Field(default=None, alias="ETSY_RETURN_POLICY_ID")
     etsy_readiness_state_id: str | None = Field(default=None, alias="ETSY_READINESS_STATE_ID")
     etsy_when_made: str = Field(default="made_to_order", alias="ETSY_WHEN_MADE")
+    # Who made the items, as Etsy's who_made. Only "i_did" earns the "handmade jewelry" tag.
+    etsy_who_made: Literal["i_did", "someone_else", "collective"] = Field(
+        default="i_did", alias="ETSY_WHO_MADE"
+    )
 
     # ---- Safety ----
     allow_live: bool = Field(default=False, alias="ANZOR_ALLOW_LIVE")

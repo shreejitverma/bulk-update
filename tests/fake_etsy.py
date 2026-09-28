@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -13,7 +14,9 @@ import httpx
 class FakeEtsy:
     fail_inventory_once: bool = False
     listings: dict[int, dict[str, Any]] = field(default_factory=dict)
-    images: dict[int, int] = field(default_factory=dict)  # listing_id -> uploads
+    # listing_id -> {listing_image_id: (file name, content type)}: the photos live on each listing
+    images: dict[int, dict[int, tuple[str, str]]] = field(default_factory=dict)
+    uploads: int = 0
     inventory: dict[int, dict[str, Any]] = field(default_factory=dict)
     refresh_tokens_seen: list[str] = field(default_factory=list)
     valid_refresh: str = "etsy-refresh-0"
@@ -84,8 +87,20 @@ class FakeEtsy:
             return httpx.Response(200, json={"listing_id": listing_id})
         if request.method == "POST" and path.endswith("/images"):
             listing_id = int(parts[-2])
-            self.images[listing_id] = self.images.get(listing_id, 0) + 1
-            return httpx.Response(201, json={"listing_image_id": 1})
+            part = re.search(
+                rb'name="image"; filename="([^"]+)"\r\nContent-Type: (\S+)', request.content
+            )
+            assert part, "no image part"
+            self.uploads += 1
+            image_id = 5000 + self.uploads
+            photo = (part[1].decode(), part[2].decode())
+            self.images.setdefault(listing_id, {})[image_id] = photo
+            return httpx.Response(201, json={"listing_image_id": image_id})
+        if request.method == "DELETE" and "images" in parts:
+            live = self.images.get(int(parts[-3]), {})
+            if live.pop(int(parts[-1]), None) is None:
+                return httpx.Response(404, json={"error": "no such image"})
+            return httpx.Response(204)
         if request.method == "PUT" and path.endswith("/inventory"):
             if self.fail_inventory_once:
                 self.fail_inventory_once = False

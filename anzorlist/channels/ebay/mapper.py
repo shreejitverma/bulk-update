@@ -11,9 +11,8 @@ Two eBay constraints shape the copy:
   cutting words could drop a qualifier ("Lab-Grown", "Plated") - exactly the FTC problem the copy
   validator exists to prevent. So the eBay title is composed from extracted facts only (purity,
   colour, metal, every stone, item type), with the brand dropped first when space runs out.
-* **Item specifics (aspects) drive search filters.** Required aspects vary by category and are
-  checked against eBay's Taxonomy API once cached; here each aspect is emitted only from a
-  value the source page actually states.
+* **Item specifics (aspects) drive search filters.** Each aspect is emitted only from a value
+  the source page actually states.
 """
 
 from __future__ import annotations
@@ -33,8 +32,7 @@ from anzorlist.pricing import PriceQuote, quantize
 
 # eBay US leaf categories for fine jewelry, as used on ebay.com's own browse pages
 # (ebay.com/b/Fine-Rings/261994, Fine-Earrings/261990, Fine-Necklaces-Pendants/261993,
-# Fine-Bracelets/261988, Fine-Jewelry-Sets/261992). `anzorlist ebay sync-aspects` confirms each
-# against the Taxonomy API and caches its required item specifics.
+# Fine-Bracelets/261988, Fine-Jewelry-Sets/261992).
 FAMILY_CATEGORY: dict[ProductFamily, str] = {
     ProductFamily.RING: "261994",
     ProductFamily.EARRINGS: "261990",
@@ -219,7 +217,7 @@ def ebay_title(product: Product, brand: str, limit: int = MAX_TITLE) -> str:
             a.metal_purity,
             colour,
             a.metal_type,
-            " & ".join(stones),
+            join_stones(stones),
             FAMILY_TYPE[product.family],
         )
         if x
@@ -242,6 +240,14 @@ def ebay_title(product: Product, brand: str, limit: int = MAX_TITLE) -> str:
         if x
     )
     return fallback[:limit]
+
+
+def join_stones(stones: list[str]) -> str:
+    """Stone names with one "&" whatever the count, as Etsy titles allow "&" only once:
+    "Diamond", "Diamond & Ruby", "Diamond, Ruby & Sapphire"."""
+    if len(stones) <= 1:
+        return "".join(stones)
+    return f"{', '.join(stones[:-1])} & {stones[-1]}"
 
 
 def _country_name(code: str) -> str:
