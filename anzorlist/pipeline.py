@@ -40,6 +40,9 @@ from anzorlist.channels.amazon.mapper import AmazonMapper
 from anzorlist.channels.ebay import artifacts as ebay_artifacts
 from anzorlist.channels.ebay.mapper import EbayMapper
 from anzorlist.channels.ebay.models import EbayListing
+from anzorlist.channels.etsy import artifacts as etsy_artifacts
+from anzorlist.channels.etsy.mapper import EtsyMapper
+from anzorlist.channels.etsy.models import EtsyListing
 from anzorlist.config import Settings
 from anzorlist.extract.client import SiteClient
 from anzorlist.extract.parser import parse_product
@@ -81,6 +84,7 @@ class SkuBuild:
     copy_model: str = ""
     hosted_images: int = 0
     ebay: EbayListing | None = None
+    etsy: EtsyListing | None = None
 
     @property
     def ok(self) -> bool:
@@ -137,6 +141,7 @@ class BuildPipeline:
         self.media = MediaPipeline(settings)
         self.mapper = AmazonMapper(settings)
         self.ebay_mapper = EbayMapper(settings)
+        self.etsy_mapper = EtsyMapper(settings)
         self.definitions = definitions or DefinitionsClient(None, settings.schema_cache_dir)
         self._copy_gen: CopyGenerator | None = None
 
@@ -172,10 +177,12 @@ class BuildPipeline:
 
         # --- 3. media ---
         image_urls: list[str] = []
+        image_files: list[str] = []
         image_problem = "image processing was skipped (--no-media)"
         if options.use_media:
             media = self.media.process(product, upload=options.upload_media)
             image_urls = media.hosted_urls
+            image_files = media.local_files
             build.hosted_images = len(image_urls)
             image_problem = media.diagnosis()
             if not image_urls:
@@ -232,7 +239,33 @@ class BuildPipeline:
 
         if "ebay" in channels:
             build.ebay = self._build_ebay(product, row, copy_obj, image_urls, build)
+        if "etsy" in channels:
+            build.etsy = self._build_etsy(product, row, copy_obj, image_files, build)
         return build
+
+    def _build_etsy(
+        self,
+        product: Product,
+        row: ListingRow,
+        copy_obj: ListingCopy,
+        image_files: list[str],
+        build: SkuBuild,
+    ) -> EtsyListing | None:
+        """One Etsy listing, priced with Etsy's fee gross-up. Images go as files, not URLs."""
+        try:
+            quote = price_for(
+                product.pricing.our_price.amount if product.pricing.our_price else None,
+                resolve("US"),
+                fee_fraction=self.settings.markup_etsy,
+                override=row.price_override_usd,
+                floor=self.settings.price_floor,
+            )
+        except PricingError as exc:
+            build.errors.append(f"Etsy: {exc}")
+            return None
+        return self.etsy_mapper.build(
+            product=product, row=row, copy=copy_obj, quote=quote, image_files=image_files
+        )
 
     def _build_ebay(
         self,
@@ -374,6 +407,10 @@ class BuildPipeline:
             ebay_artifacts.clear(self.settings.data_dir, row.sku)
             if build.ebay is not None:
                 ebay_artifacts.write(self.settings.data_dir, build.ebay)
+        if "etsy" in channels:
+            etsy_artifacts.clear(self.settings.data_dir, row.sku)
+            if build.etsy is not None:
+                etsy_artifacts.write(self.settings.data_dir, build.etsy)
 
     # ------------------------------------------------------------------ helpers
 

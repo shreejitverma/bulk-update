@@ -100,7 +100,7 @@ class Settings(BaseSettings):
 
     marketplaces: str = Field(default="US", alias="ANZOR_MARKETPLACES")
     # Which channels `anzorlist build` produces listings for: amazon, ebay, etsy.
-    channels: str = Field(default="amazon,ebay", alias="ANZOR_CHANNELS")
+    channels: str = Field(default="amazon,ebay,etsy", alias="ANZOR_CHANNELS")
     use_sandbox: bool = Field(default=False, alias="SPAPI_SANDBOX")
 
     # ---- eBay Sell APIs (Inventory + Account + Taxonomy) ----

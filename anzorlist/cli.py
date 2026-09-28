@@ -38,6 +38,7 @@ from anzorlist.store.db import Ledger, new_run_id
 if TYPE_CHECKING:
     from anzorlist.channels.amazon.client import ClientPool
     from anzorlist.channels.ebay.client import EbayClient
+    from anzorlist.channels.etsy.client import EtsyClient
 
 app = typer.Typer(
     name="anzorlist",
@@ -53,6 +54,8 @@ app.add_typer(workbook_app, name="workbook")
 app.add_typer(amazon_app, name="amazon")
 ebay_app = typer.Typer(help="eBay Sell API operations.", no_args_is_help=True)
 app.add_typer(ebay_app, name="ebay")
+etsy_app = typer.Typer(help="Etsy Open API operations.", no_args_is_help=True)
+app.add_typer(etsy_app, name="etsy")
 
 console = Console()
 err_console = Console(stderr=True)
@@ -310,7 +313,8 @@ def build(
 
     _print_build_report(report, s)
     ebay_blocked = any(b.ebay is not None and not b.ebay.submittable for b in report.builds)
-    if len(report.submittable) < len(report.listings) or ebay_blocked:
+    etsy_blocked = any(b.etsy is not None and not b.etsy.submittable for b in report.builds)
+    if len(report.submittable) < len(report.listings) or ebay_blocked or etsy_blocked:
         raise typer.Exit(1)
 
 
@@ -322,6 +326,7 @@ def _print_build_report(report: BuildReport, s: Settings) -> None:
     table.add_column("Copy", overflow="fold")
     table.add_column("Status", overflow="fold")
     table.add_column("eBay", overflow="fold")
+    table.add_column("Etsy", overflow="fold")
 
     for b in report.builds:
         if b.errors:
@@ -344,8 +349,20 @@ def _print_build_report(report: BuildReport, s: Settings) -> None:
             ebay_note = "[green]ready[/]"
         else:
             ebay_note = f"[red]blocked[/]: {b.ebay.blocking_issues[0].code}"
+        if b.etsy is None:
+            etsy_note = "-"
+        elif b.etsy.submittable:
+            etsy_note = "[green]ready[/]"
+        else:
+            etsy_note = f"[red]blocked[/]: {b.etsy.blocking_issues[0].code}"
         table.add_row(
-            b.sku, str(len(b.listings)), str(b.hosted_images), copy_note, status, ebay_note
+            b.sku,
+            str(len(b.listings)),
+            str(b.hosted_images),
+            copy_note,
+            status,
+            ebay_note,
+            etsy_note,
         )
 
     console.print(table)
@@ -1031,6 +1048,105 @@ def _included_skus(s: Settings) -> set[str]:
         err_console.print("[red]The workbook has errors.[/] Run `anzorlist workbook validate`.")
         raise typer.Exit(1)
     return {r.sku.upper() for r in result.included()}
+
+
+# =====================================================================  etsy
+
+
+def _make_etsy_client(s: Settings) -> EtsyClient:
+    """Construct the Etsy client. A seam: the end-to-end tests swap in a fake Etsy."""
+    from anzorlist.channels.etsy.client import EtsyClient
+
+    return EtsyClient(s)
+
+
+@etsy_app.command("submit")
+def etsy_submit(
+    skus: Annotated[
+        list[str] | None, typer.Argument(help="Website SKUs; default: workbook.")
+    ] = None,
+    confirm: Annotated[
+        bool, typer.Option("--confirm", help="Required. Publishes listings.")
+    ] = False,
+) -> None:
+    """Create or update Etsy listings and activate them. Writes to the Etsy shop."""
+    from anzorlist.channels.amazon.artifacts import ArtifactError
+    from anzorlist.channels.etsy import artifacts as etsy_artifacts
+    from anzorlist.channels.etsy.publish import EtsyPublisher
+
+    s = get_settings()
+    if not (confirm and s.allow_live):
+        err_console.print(
+            Panel.fit(
+                "[red]Publishing needs both --confirm and ANZOR_ALLOW_LIVE=true.[/]",
+                title="refusing to publish",
+            )
+        )
+        raise typer.Exit(2)
+    try:
+        s.etsy_settings()
+    except MissingCredential as exc:
+        err_console.print(f"[red]{exc}[/]")
+        raise typer.Exit(2) from exc
+    try:
+        built = etsy_artifacts.load_all(s.data_dir)
+    except ArtifactError as exc:
+        err_console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
+    wanted = {k.upper() for k in skus} if skus else _included_skus(s)
+    selected = [x for x in built if x.source_sku.upper() in wanted]
+    if not selected:
+        err_console.print("[red]No built Etsy listings selected.[/] Run `anzorlist build` first.")
+        raise typer.Exit(1)
+
+    blocked = [x for x in selected if not x.submittable]
+    for x in blocked:
+        first = x.blocking_issues[0]
+        console.print(f"[red]blocked[/] {x.source_sku}: {first.code}: {first.message}")
+
+    client = _make_etsy_client(s)
+    outcomes: list[SubmissionOutcome] = []
+    try:
+        with Ledger(s.state_db) as ledger:
+            ready = [x for x in selected if x.submittable]
+            send = [x for x in ready if ledger.needs_submission(x)]
+            if len(ready) > len(send):
+                console.print(f"[dim]{len(ready) - len(send)} unchanged since last publish.[/]")
+            if not send:
+                if blocked:
+                    raise typer.Exit(1)
+                console.print("[green]Everything is already up to date.[/]")
+                return
+            console.print(f"\n[bold yellow]About to publish {len(send)} Etsy listing(s):[/]")
+            for x in send[:10]:
+                kind = f"{len(x.variations)} sizes" if x.variations else "single"
+                console.print(f"  {x.source_sku:<12} {kind:<10} from {x.currency} {x.price}")
+            if not typer.confirm("\nProceed? (Etsy charges a listing fee per activation)"):
+                console.print("Aborted. Nothing was sent.")
+                raise typer.Exit(0)
+            run_id = new_run_id("etsy-submit")
+            ledger.start_run(run_id, "etsy submit", mode="SUBMIT")
+            publisher = EtsyPublisher(client, s)
+            try:
+                for listing in send:
+                    outcome = publisher.submit(listing, confirm=True)
+                    ledger.record_submission(outcome, run_id)
+                    outcomes.append(outcome)
+            finally:
+                ledger.finish_run(
+                    run_id,
+                    {
+                        "published": sum(1 for o in outcomes if o.accepted),
+                        "failed": sum(1 for o in outcomes if not o.accepted),
+                        "blocked": len(blocked),
+                    },
+                )
+                if outcomes:
+                    _print_outcomes(outcomes, f"Etsy {run_id}")
+    finally:
+        client.close()
+    if blocked or any(not o.accepted for o in outcomes):
+        raise typer.Exit(1)
 
 
 def _print_outcomes(outcomes: list[SubmissionOutcome], title: str) -> None:
