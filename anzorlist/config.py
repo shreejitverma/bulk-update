@@ -114,6 +114,16 @@ class Settings(BaseSettings):
     ebay_return_policy_id: str | None = Field(default=None, alias="EBAY_RETURN_POLICY_ID")
     ebay_merchant_location_key: str | None = Field(default=None, alias="EBAY_MERCHANT_LOCATION_KEY")
 
+    # ---- Etsy Open API v3 ----
+    etsy_api_key: SecretStr | None = Field(default=None, alias="ETSY_API_KEY")  # the keystring
+    etsy_shared_secret: SecretStr | None = Field(default=None, alias="ETSY_SHARED_SECRET")
+    etsy_refresh_token: SecretStr | None = Field(default=None, alias="ETSY_REFRESH_TOKEN")
+    etsy_shop_id: str | None = Field(default=None, alias="ETSY_SHOP_ID")
+    etsy_shipping_profile_id: str | None = Field(default=None, alias="ETSY_SHIPPING_PROFILE_ID")
+    etsy_return_policy_id: str | None = Field(default=None, alias="ETSY_RETURN_POLICY_ID")
+    etsy_readiness_state_id: str | None = Field(default=None, alias="ETSY_READINESS_STATE_ID")
+    etsy_when_made: str = Field(default="made_to_order", alias="ETSY_WHEN_MADE")
+
     # ---- Safety ----
     allow_live: bool = Field(default=False, alias="ANZOR_ALLOW_LIVE")
     default_quantity: int = Field(default=1, alias="ANZOR_DEFAULT_QUANTITY")
@@ -204,6 +214,22 @@ class Settings(BaseSettings):
                     var, "Run `anzorlist ebay setup` to list your business policies and locations."
                 )
         return {k: str(v) for k, v in required.items()}
+
+    def etsy_settings(self) -> dict[str, str]:
+        """Every value an Etsy listing needs, or MissingCredential naming the first gap."""
+        values = {
+            "ETSY_API_KEY": self.etsy_api_key.get_secret_value() if self.etsy_api_key else None,
+            "ETSY_REFRESH_TOKEN": (
+                self.etsy_refresh_token.get_secret_value() if self.etsy_refresh_token else None
+            ),
+            "ETSY_SHOP_ID": self.etsy_shop_id,
+            "ETSY_SHIPPING_PROFILE_ID": self.etsy_shipping_profile_id,
+            "ETSY_RETURN_POLICY_ID": self.etsy_return_policy_id,
+        }
+        for var, value in values.items():
+            if not value:
+                raise MissingCredential(var, "See docs/RUNBOOK.md, section Etsy.")
+        return {k: str(v) for k, v in values.items()}
 
     def channel_set(self) -> set[str]:
         return {c.strip().lower() for c in self.channels.split(",") if c.strip()}

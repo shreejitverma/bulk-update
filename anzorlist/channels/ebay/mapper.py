@@ -203,7 +203,7 @@ class EbayMapper:
         return aspects
 
 
-def ebay_title(product: Product, brand: str) -> str:
+def ebay_title(product: Product, brand: str, limit: int = MAX_TITLE) -> str:
     """Purity, colour, metal, every stone, item type - then the brand in front if it fits."""
     a = product.attributes
     stones: list[str] = []
@@ -225,9 +225,9 @@ def ebay_title(product: Product, brand: str) -> str:
         if x
     )
     with_brand = f"{brand} {core}"
-    if len(with_brand) <= MAX_TITLE:
+    if len(with_brand) <= limit:
         return with_brand
-    if len(core) <= MAX_TITLE:
+    if len(core) <= limit:
         return core
     # Still too long: drop secondary stones, never the qualifiers of the ones named.
     fallback = " ".join(
@@ -241,7 +241,7 @@ def ebay_title(product: Product, brand: str) -> str:
         )
         if x
     )
-    return fallback[:MAX_TITLE]
+    return fallback[:limit]
 
 
 def _country_name(code: str) -> str:
