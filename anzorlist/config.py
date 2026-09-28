@@ -18,6 +18,7 @@ from __future__ import annotations
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -99,7 +100,34 @@ class Settings(BaseSettings):
     seller_id_fe: str | None = Field(default=None, alias="SPAPI_SELLER_ID_FE")
 
     marketplaces: str = Field(default="US", alias="ANZOR_MARKETPLACES")
+    # Which channels `anzorlist build` produces listings for: amazon, ebay, etsy.
+    channels: str = Field(default="amazon,ebay,etsy", alias="ANZOR_CHANNELS")
     use_sandbox: bool = Field(default=False, alias="SPAPI_SANDBOX")
+
+    # ---- eBay Sell APIs (Inventory + Account) ----
+    ebay_env: str = Field(default="SANDBOX", alias="EBAY_ENV")  # SANDBOX or PRODUCTION
+    ebay_client_id: SecretStr | None = Field(default=None, alias="EBAY_CLIENT_ID")
+    ebay_client_secret: SecretStr | None = Field(default=None, alias="EBAY_CLIENT_SECRET")
+    ebay_refresh_token: SecretStr | None = Field(default=None, alias="EBAY_REFRESH_TOKEN")
+    ebay_marketplace_id: str = Field(default="EBAY_US", alias="EBAY_MARKETPLACE_ID")
+    ebay_fulfillment_policy_id: str | None = Field(default=None, alias="EBAY_FULFILLMENT_POLICY_ID")
+    ebay_payment_policy_id: str | None = Field(default=None, alias="EBAY_PAYMENT_POLICY_ID")
+    ebay_return_policy_id: str | None = Field(default=None, alias="EBAY_RETURN_POLICY_ID")
+    ebay_merchant_location_key: str | None = Field(default=None, alias="EBAY_MERCHANT_LOCATION_KEY")
+
+    # ---- Etsy Open API v3 ----
+    etsy_api_key: SecretStr | None = Field(default=None, alias="ETSY_API_KEY")  # the keystring
+    etsy_shared_secret: SecretStr | None = Field(default=None, alias="ETSY_SHARED_SECRET")
+    etsy_refresh_token: SecretStr | None = Field(default=None, alias="ETSY_REFRESH_TOKEN")
+    etsy_shop_id: str | None = Field(default=None, alias="ETSY_SHOP_ID")
+    etsy_shipping_profile_id: str | None = Field(default=None, alias="ETSY_SHIPPING_PROFILE_ID")
+    etsy_return_policy_id: str | None = Field(default=None, alias="ETSY_RETURN_POLICY_ID")
+    etsy_readiness_state_id: str | None = Field(default=None, alias="ETSY_READINESS_STATE_ID")
+    etsy_when_made: str = Field(default="made_to_order", alias="ETSY_WHEN_MADE")
+    # Who made the items, as Etsy's who_made. Only "i_did" earns the "handmade jewelry" tag.
+    etsy_who_made: Literal["i_did", "someone_else", "collective"] = Field(
+        default="i_did", alias="ETSY_WHO_MADE"
+    )
 
     # ---- Safety ----
     allow_live: bool = Field(default=False, alias="ANZOR_ALLOW_LIVE")
@@ -156,6 +184,60 @@ class Settings(BaseSettings):
                 "SPAPI_LWA_CLIENT_SECRET", "Shown once when the SP-API app is created."
             )
         return self.lwa_client_id.get_secret_value(), self.lwa_client_secret.get_secret_value()
+
+    def ebay_credentials(self) -> tuple[str, str, str]:
+        """(client id, client secret, refresh token) for the eBay Sell APIs."""
+        for value, var, why in (
+            (self.ebay_client_id, "EBAY_CLIENT_ID", "The App ID from your eBay developer keyset."),
+            (self.ebay_client_secret, "EBAY_CLIENT_SECRET", "The Cert ID from the same keyset."),
+            (
+                self.ebay_refresh_token,
+                "EBAY_REFRESH_TOKEN",
+                "Issued when you grant your app access to the seller account (user token).",
+            ),
+        ):
+            if value is None:
+                raise MissingCredential(var, why)
+        assert self.ebay_client_id and self.ebay_client_secret and self.ebay_refresh_token
+        return (
+            self.ebay_client_id.get_secret_value(),
+            self.ebay_client_secret.get_secret_value(),
+            self.ebay_refresh_token.get_secret_value(),
+        )
+
+    def ebay_listing_policies(self) -> dict[str, str]:
+        """The three business policies and the inventory location every eBay offer needs."""
+        required = {
+            "EBAY_FULFILLMENT_POLICY_ID": self.ebay_fulfillment_policy_id,
+            "EBAY_PAYMENT_POLICY_ID": self.ebay_payment_policy_id,
+            "EBAY_RETURN_POLICY_ID": self.ebay_return_policy_id,
+            "EBAY_MERCHANT_LOCATION_KEY": self.ebay_merchant_location_key,
+        }
+        for var, value in required.items():
+            if not value:
+                raise MissingCredential(
+                    var, "Run `anzorlist ebay setup` to list your business policies and locations."
+                )
+        return {k: str(v) for k, v in required.items()}
+
+    def etsy_settings(self) -> dict[str, str]:
+        """Every value an Etsy listing needs, or MissingCredential naming the first gap."""
+        values = {
+            "ETSY_API_KEY": self.etsy_api_key.get_secret_value() if self.etsy_api_key else None,
+            "ETSY_REFRESH_TOKEN": (
+                self.etsy_refresh_token.get_secret_value() if self.etsy_refresh_token else None
+            ),
+            "ETSY_SHOP_ID": self.etsy_shop_id,
+            "ETSY_SHIPPING_PROFILE_ID": self.etsy_shipping_profile_id,
+            "ETSY_RETURN_POLICY_ID": self.etsy_return_policy_id,
+        }
+        for var, value in values.items():
+            if not value:
+                raise MissingCredential(var, "See docs/RUNBOOK.md, section Etsy.")
+        return {k: str(v) for k, v in values.items()}
+
+    def channel_set(self) -> set[str]:
+        return {c.strip().lower() for c in self.channels.split(",") if c.strip()}
 
     def has_spapi_credentials(self) -> bool:
         """True when a live call could at least be attempted. Used to pick offline mode."""

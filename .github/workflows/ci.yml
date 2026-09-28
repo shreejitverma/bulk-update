@@ -5,31 +5,32 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-
-      - name: Sync dependencies
-        run: uv sync --all-extras --dev
-
+      - name: Install
+        run: uv sync --locked
       - name: Lint
-        run: uv run ruff check anzorlist tests scripts
-
-      - name: Format check
-        run: uv run black --check anzorlist tests scripts
-
-      - name: Tests
-        # The suite is fully offline: it runs against committed HTML fixtures with no network
-        # and no credentials, so CI needs no secrets and cannot touch a live Amazon account.
+        run: uv run ruff check .
+      - name: Format
+        run: |
+          uv run ruff format --check .
+          uv run black --check .
+      - name: Types
+        run: uv run mypy anzorlist
+      - name: Tests (offline; no credentials)
+        # The suite is fully offline: it runs against committed fixtures and fake marketplaces,
+        # with no network and no credentials, so CI needs no secrets and cannot touch a live
+        # Amazon, eBay or Etsy account.
         run: uv run pytest -q
-
       - name: Verify the pipeline still builds a listing offline
         # A green unit suite with a broken end-to-end path is the failure mode that matters
         # here, so CI exercises the real fixture -> Amazon payload route on every push.

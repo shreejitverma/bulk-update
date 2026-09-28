@@ -30,6 +30,13 @@ data/schemas/
 data/parsed/
 data/feeds/
 
+# eBay/Etsy artifacts and state (data/etsy/token.json is a live Etsy refresh token)
+data/ebay/
+data/etsy/
+
 # Operator product photos (large binaries, not source)
 images/
 *.backup.xlsx
+
+# Local tasks-axi backlog
+backlog.md

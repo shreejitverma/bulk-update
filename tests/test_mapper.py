@@ -5,10 +5,14 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 
 from anzorlist.channels.amazon.mapper import AmazonMapper, attr, localized
+from anzorlist.channels.etsy.mapper import EtsyMapper
+from anzorlist.config import Settings
 from anzorlist.generate.copy import ListingCopy, fallback_copy
 from anzorlist.ingest.row import ListingRow
+from anzorlist.models.product import Gemstone
 from anzorlist.pricing import price_for
 
 
@@ -384,3 +388,46 @@ class TestStonesAndSizes:
 
     def test_fallback_title_names_every_stone(self, earrings):
         assert "Diamond and Emerald" in fallback_copy(earrings, "Anzor Jewelry").title
+
+
+class TestEtsyMapper:
+    def _build(self, settings, product, copy_obj, quote, row=None, files=("/p/main.jpg",)):
+        return EtsyMapper(settings).build(
+            product=product,
+            row=row or ListingRow(sku=product.sku),
+            copy=copy_obj,
+            quote=quote,
+            image_files=list(files),
+        )
+
+    def test_three_stones_use_one_ampersand(self, settings, ring, copy_obj, quote):
+        product = ring.model_copy(deep=True)
+        product.attributes.gemstones = [
+            Gemstone(type=t, provenance_key="test") for t in ("Diamond", "Ruby", "Sapphire")
+        ]
+        listing = self._build(settings, product, copy_obj, quote)
+        assert "Diamond, Ruby & Sapphire" in listing.title
+        assert listing.submittable
+
+    def test_a_title_override_with_two_ampersands_is_held(self, settings, ring, copy_obj, quote):
+        row = ListingRow(sku=ring.sku, item_name_override="Gold & Diamond & Ruby Ring")
+        listing = self._build(settings, ring, copy_obj, quote, row=row)
+        assert [i.code for i in listing.blocking_issues] == ["EtsyTitleRule"]
+
+    def test_tiff_photos_are_held(self, settings, ring, copy_obj, quote):
+        listing = self._build(settings, ring, copy_obj, quote, files=("/p/a.jpg", "/p/b.tif"))
+        [issue] = listing.blocking_issues
+        assert issue.code == "EtsyImageFormat" and "b.tif" in issue.message
+
+    def test_who_made_drives_the_handmade_tag(self, settings, ring, copy_obj, quote):
+        own = self._build(settings, ring, copy_obj, quote)
+        assert own.who_made == "i_did" and "handmade jewelry" in own.tags
+        bought = self._build(
+            settings.model_copy(update={"etsy_who_made": "someone_else"}), ring, copy_obj, quote
+        )
+        assert bought.listing_fields()["who_made"] == "someone_else"
+        assert "handmade jewelry" not in bought.tags
+
+    def test_who_made_is_validated(self):
+        with pytest.raises(ValidationError, match="ETSY_WHO_MADE"):
+            Settings(_env_file=None, ETSY_WHO_MADE="me")  # type: ignore[call-arg]

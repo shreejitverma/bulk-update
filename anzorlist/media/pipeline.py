@@ -103,6 +103,18 @@ class MediaResult:
         alts = [i.public_url for i in self.images if i.role != "main" and i.public_url]
         return [main, *alts]
 
+    @property
+    def local_files(self) -> list[str]:
+        """Checked image files on disk, main first - for channels that take bytes (Etsy).
+
+        Empty unless the main image passed its checks, for the same reason as ``hosted_urls``.
+        """
+        main = next((i for i in self.images if i.role == "main" and i.ok and i.local_path), None)
+        if main is None:
+            return []
+        alts = [i for i in self.images if i.role != "main" and i.ok and i.local_path]
+        return [str(i.local_path) for i in [main, *alts]]
+
     def diagnosis(self) -> str:
         """Why there is no hosted main image, and what the operator does about it."""
         override = (
@@ -200,7 +212,6 @@ class MediaPipeline:
                         try:
                             image.public_url = uploader.upload(image)
                         except Exception as exc:  # noqa: BLE001 - one SKU must not stop the run
-                            image.errors.append(f"upload to image hosting failed: {exc}")
                             result.hosting_note = f"upload to image hosting failed: {exc}"
                             log.error("media.upload_failed", sku=product.sku, error=str(exc))
             else:

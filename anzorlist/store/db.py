@@ -27,7 +27,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 import structlog
 
@@ -38,6 +38,20 @@ log = structlog.get_logger(__name__)
 SCHEMA_VERSION = 1
 
 SubmissionState = Literal["new", "changed", "accepted", "in_flight", "failed"]
+
+
+class SubmissionKey(Protocol):
+    """What the ledger needs to know about any channel's listing to decide what to resend."""
+
+    @property
+    def sku(self) -> str: ...
+
+    @property
+    def marketplace_id(self) -> str: ...
+
+    @property
+    def payload_hash(self) -> str: ...
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -190,7 +204,7 @@ class Ledger:
                 ),
             )
 
-    def submission_state(self, listing: BuiltListing) -> SubmissionState:
+    def submission_state(self, listing: SubmissionKey) -> SubmissionState:
         """Where this exact payload stands with Amazon, from the last live write for its SKU.
 
         The comparison is on the payload hash, not on a timestamp: a rebuild that produces
@@ -216,7 +230,7 @@ class Ledger:
             return "in_flight"  # inside a feed that has not been reconciled
         return "failed"
 
-    def needs_submission(self, listing: BuiltListing) -> bool:
+    def needs_submission(self, listing: SubmissionKey) -> bool:
         """True when this exact payload is neither accepted nor already in flight."""
         return self.submission_state(listing) in ("new", "changed", "failed")
 
@@ -277,7 +291,7 @@ class Ledger:
     """
 
     def live_skus(self, marketplace_id: str | None = None) -> list[LedgerEntry]:
-        """Every SKU believed to exist on Amazon. This is the rollback list.
+        """Every SKU believed to exist in a marketplace, on any channel. This is the rollback list.
 
         Derived from the write history, not from ``listings.status``: that column records the
         latest event of any kind, so a failed preview, an in-flight feed, or a rejected *update*
@@ -293,8 +307,8 @@ class Ledger:
         return [LedgerEntry(**dict(r)) for r in rows]
 
     def is_live(self, sku: str, marketplace_id: str) -> bool:
-        """Whether this SKU exists on Amazon, by the same rule as :meth:`live_skus`, whatever
-        payload was last accepted for it."""
+        """Whether this SKU exists in the marketplace, by the same rule as :meth:`live_skus`,
+        whatever payload was last accepted for it."""
         row = self._conn.execute(
             self._LIVE_SQL + " AND s.sku = ? AND s.marketplace_id = ?", (sku, marketplace_id)
         ).fetchone()

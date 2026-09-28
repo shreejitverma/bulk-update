@@ -60,7 +60,7 @@ class ListingIssue(BaseModel):
     message: str
     severity: IssueSeverity = IssueSeverity.ERROR
     attribute_names: list[str] = Field(default_factory=list)
-    source: Literal["local", "schema", "amazon", "policy"] = "local"
+    source: Literal["local", "schema", "amazon", "ebay", "etsy", "policy"] = "local"
 
     @property
     def blocking(self) -> bool:
